@@ -253,7 +253,7 @@ function renderModal() {
       <button class="btn primary" style="width:100%" data-action="zettle-pick">Import Zettle report (.xlsx)</button>
       <input type="file" id="zettle-file" accept=".xlsx,.xls" hidden>
       <input type="file" id="backup-file" accept=".json,application/json" hidden>
-      <p class="sub" style="text-align:center">Glowstone Booth v0.2</p>`;
+      <p class="sub" style="text-align:center">Glowstone Booth v0.4.1</p>`;
   }
 
   if (ui.modal === 'zimport') {
@@ -656,6 +656,10 @@ window.__gs = { handleZettleFile, parseZettleWorkbook, ensureXLSX, syncNow };
 
 const isDev = ['localhost', '127.0.0.1'].includes(location.hostname);
 if ('serviceWorker' in navigator && location.protocol !== 'file:' && !isDev) {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  // auto-refresh once when an updated service worker takes over, so new
+  // versions appear without manual cache clearing
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) location.reload(); });
+  navigator.serviceWorker.register('sw.js').then((reg) => reg.update()).catch(() => {});
 }
 navigator.storage?.persist?.();
