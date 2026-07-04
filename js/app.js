@@ -64,10 +64,10 @@ function homeView() {
       const total = closed.reduce((t, d) => t + dayTotal(d), 0);
       const fees = (ev.boothFee || 0) + (ev.otherCosts || 0);
       const rows = days.map((d) => {
-        if (!d.closedAt) return `<div class="day-row"><span class="d">${fmtDate(d.date)}</span><span class="t">open — cash logged ${fmt(cashLogged(d))}</span></div>`;
+        if (!d.closedAt) return `<div class="day-row" data-day-id="${d.id}"><span class="d">${fmtDate(d.date)}</span><span class="t">open — cash logged ${fmt(cashLogged(d))}</span></div>`;
         const perHr = d.hours ? fmt(dayTotal(d) / d.hours) + '/hr' : '';
         const ztx = zettleTxnsFor(d).length;
-        return `<div class="day-row"><span class="d">${fmtDate(d.date)}</span><span class="t">${fmt(dayTotal(d))}</span><span class="m">${d.hours ? d.hours + 'h ' + perHr : ''}${ztx ? ' · ' + ztx + ' card txns' : ''}</span></div>`;
+        return `<div class="day-row" data-day-id="${d.id}"><span class="d">${fmtDate(d.date)}</span><span class="t">${fmt(dayTotal(d))}</span><span class="m">${d.hours ? d.hours + 'h ' + perHr : ''}${ztx ? ' · ' + ztx + ' card txns' : ''}</span></div>`;
       }).join('');
       html += `
         <div class="card">
@@ -253,7 +253,7 @@ function renderModal() {
       <button class="btn primary" style="width:100%" data-action="zettle-pick">Import Zettle report (.xlsx)</button>
       <input type="file" id="zettle-file" accept=".xlsx,.xls" hidden>
       <input type="file" id="backup-file" accept=".json,application/json" hidden>
-      <p class="sub" style="text-align:center">Glowstone Booth v0.4.1</p>`;
+      <p class="sub" style="text-align:center">Glowstone Booth v0.4.2</p>`;
   }
 
   if (ui.modal === 'zimport') {
@@ -495,6 +495,49 @@ async function handleBackupFile(file) {
     showToast('Restore failed: ' + err.message);
   }
 }
+
+/* ---------- day deletion (long-press) ---------- */
+
+function deleteDayPrompt(dayId) {
+  const day = dayById(dayId);
+  if (!day) return;
+  const ev = eventById(day.eventId);
+  const nSales = daySales(day).length;
+  const nZtx = zettleTxnsFor(day).length;
+  navigator.vibrate?.(60);
+  const extra = day.synced ? '\n\nNote: this day was already synced — also delete its row in Daily_Sales.' : '';
+  const msg = `Delete ${day.closedAt ? 'closed' : 'open'} day ${fmtDate(day.date)} · ${ev?.name || ''}?\n` +
+    `${nSales} logged sale(s) and ${nZtx} imported card txn(s) will be removed.${extra}\n\nThis can't be undone.`;
+  if (!confirm(msg)) return;
+  db.sales = db.sales.filter((s) => s.dayId !== dayId);
+  for (const k of Object.keys(db.zettle)) if (db.zettle[k].dayId === dayId) delete db.zettle[k];
+  db.days = db.days.filter((d) => d.id !== dayId);
+  if (db.activeDayId === dayId) db.activeDayId = null;
+  save(db);
+  showToast('Day deleted');
+  render();
+}
+
+let press = null;
+function cancelPress() { if (press) { clearTimeout(press.t); press = null; } }
+document.addEventListener('pointerdown', (e) => {
+  const row = e.target.closest('[data-day-id]');
+  if (!row) return;
+  cancelPress();
+  press = {
+    x: e.clientX, y: e.clientY,
+    t: setTimeout(() => { press = null; deleteDayPrompt(row.dataset.dayId); }, 600)
+  };
+});
+document.addEventListener('pointerup', cancelPress);
+document.addEventListener('pointercancel', cancelPress);
+document.addEventListener('pointermove', (e) => {
+  if (press && (Math.abs(e.clientX - press.x) > 12 || Math.abs(e.clientY - press.y) > 12)) cancelPress();
+});
+document.addEventListener('contextmenu', (e) => {
+  const row = e.target.closest('[data-day-id]');
+  if (row) { e.preventDefault(); cancelPress(); deleteDayPrompt(row.dataset.dayId); }
+});
 
 /* ---------- sheet sync ---------- */
 
