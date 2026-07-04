@@ -1,6 +1,8 @@
 const KEY = 'glowstone_db_v1';
 
-export const DEFAULT_CHIPS = [20, 30, 40, 50, 60, 80, 100, 150];
+// Tag prices end in 3s and 7s below $200 — owner A/B tested vs 4s/9s and 5s/0s: 34% higher conversion.
+export const DEFAULT_CHIPS = [17, 23, 27, 33, 37, 43, 47, 53, 67];
+const LEGACY_CHIPS = JSON.stringify([20, 30, 40, 50, 60, 80, 100, 150]);
 
 export const DEFAULT_CATEGORIES = [
   'Amethyst Cut Base',
@@ -53,6 +55,7 @@ export function load() {
     db.settings = Object.assign(base.settings, db.settings || {});
     for (const k of ['events', 'days', 'sales']) if (!Array.isArray(db[k])) db[k] = [];
     if (typeof db.zettle !== 'object' || db.zettle === null) db.zettle = {};
+    if (JSON.stringify(db.settings.chips) === LEGACY_CHIPS) db.settings.chips = DEFAULT_CHIPS.slice();
     return db;
   } catch {
     return defaults();

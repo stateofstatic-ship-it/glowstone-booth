@@ -184,6 +184,8 @@ function renderModal() {
         <input name="boothFee" type="number" inputmode="decimal" step="0.01" placeholder="0">
         <label>Other costs — travel, lodging, app fees ($)</label>
         <input name="otherCosts" type="number" inputmode="decimal" step="0.01" placeholder="0">
+        <label>Sales tax % added at checkout (0 in Oregon)</label>
+        <input name="taxRate" type="number" inputmode="decimal" step="0.01" placeholder="Seattle ≈ 10.35">
         <div class="actions">
           <button type="button" class="btn" data-action="modal-cancel">Cancel</button>
           <button type="submit" class="btn primary">Start selling day</button>
@@ -351,7 +353,10 @@ function updateCloseCalc() {
     const cls = Math.abs(delta) < 1 ? 'ok' : 'warn';
     note = `<span class="${cls}">Cash ${fmt(cashActual)} vs logged ${fmt(logged)} (Δ ${delta >= 0 ? '+' : ''}${fmt(delta)})</span>`;
   }
-  out.innerHTML = `Day total: <strong>${fmt(card + cashActual)}</strong><br>${note}`;
+  const rate = eventById(day.eventId)?.taxRate || 0;
+  const taxNote = rate > 0
+    ? `<br><span>≈ ${fmt((card + cashActual) - (card + cashActual) / (1 + rate / 100))} of this is sales tax (net ${fmt((card + cashActual) / (1 + rate / 100))})</span>` : '';
+  out.innerHTML = `Day total: <strong>${fmt(card + cashActual)}</strong><br>${note}${taxNote}`;
 }
 
 function submitClose(form) {
@@ -382,6 +387,7 @@ function submitEvent(form) {
     venueType: form.venueType.value,
     boothFee: parseFloat(form.boothFee.value) || 0,
     otherCosts: parseFloat(form.otherCosts.value) || 0,
+    taxRate: parseFloat(form.taxRate.value) || 0,
     lastUsed: Date.now()
   };
   if (!ev.name) return;
