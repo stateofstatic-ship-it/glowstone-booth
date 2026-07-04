@@ -1,7 +1,8 @@
-import { load, save, uid, todayStr, VENUE_TYPES } from './store.js';
+import { load, save, replaceDb, uid, todayStr, VENUE_TYPES } from './store.js';
+import { parseZettleWorkbook } from './zettle.js';
 
 const db = load();
-const ui = { modal: null, forceHome: false, pad: null, notable: null, undoId: null, toastTimer: null };
+const ui = { modal: null, forceHome: false, pad: null, notable: null, undoId: null, toastTimer: null, zimport: null };
 
 /* ---------- helpers ---------- */
 
@@ -21,6 +22,7 @@ const activeDay = () => (db.activeDayId ? dayById(db.activeDayId) : null);
 const daySales = (day) => db.sales.filter((s) => s.dayId === day.id);
 const cashLogged = (day) => daySales(day).filter((s) => s.payType === 'cash').reduce((t, s) => t + s.amount, 0);
 const dayTotal = (day) => (day.closedAt ? (day.cardTotal || 0) + (day.cashActual || 0) : null);
+const zettleTxnsFor = (day) => Object.values(db.zettle).filter((z) => z.dayId === day.id);
 
 /* ---------- views ---------- */
 
@@ -64,7 +66,8 @@ function homeView() {
       const rows = days.map((d) => {
         if (!d.closedAt) return `<div class="day-row"><span class="d">${fmtDate(d.date)}</span><span class="t">open — cash logged ${fmt(cashLogged(d))}</span></div>`;
         const perHr = d.hours ? fmt(dayTotal(d) / d.hours) + '/hr' : '';
-        return `<div class="day-row"><span class="d">${fmtDate(d.date)}</span><span class="t">${fmt(dayTotal(d))}</span><span class="m">${d.hours || 0}h ${perHr}</span></div>`;
+        const ztx = zettleTxnsFor(d).length;
+        return `<div class="day-row"><span class="d">${fmtDate(d.date)}</span><span class="t">${fmt(dayTotal(d))}</span><span class="m">${d.hours ? d.hours + 'h ' + perHr : ''}${ztx ? ' · ' + ztx + ' card txns' : ''}</span></div>`;
       }).join('');
       html += `
         <div class="card">
@@ -230,13 +233,52 @@ function renderModal() {
           <button type="submit" class="btn primary">Save</button>
         </div>
       </form>
-      <h2>Export</h2>
+      <h2>Data</h2>
       <div class="row2" style="margin-bottom:10px">
         <button class="btn" data-action="export-sales">Sales CSV</button>
         <button class="btn" data-action="export-days">Days CSV</button>
       </div>
-      <button class="btn" style="width:100%" data-action="export-json">Full backup (JSON)</button>
-      <p class="sub" style="text-align:center">Glowstone Booth v0.1</p>`;
+      <div class="row2" style="margin-bottom:10px">
+        <button class="btn" data-action="export-json">Backup (JSON)</button>
+        <button class="btn" data-action="backup-pick">Restore backup</button>
+      </div>
+      <button class="btn primary" style="width:100%" data-action="zettle-pick">Import Zettle report (.xlsx)</button>
+      <input type="file" id="zettle-file" accept=".xlsx,.xls" hidden>
+      <input type="file" id="backup-file" accept=".json,application/json" hidden>
+      <p class="sub" style="text-align:center">Glowstone Booth v0.2</p>`;
+  }
+
+  if (ui.modal === 'zimport') {
+    const z = ui.zimport;
+    const lines = z.matches.map((m) => {
+      let dest;
+      if (m.day) {
+        const ev = eventById(m.day.eventId);
+        const entered = m.day.closedAt ? ` — you entered card ${fmt(m.day.cardTotal || 0)}` : '';
+        dest = `→ ${esc(ev?.name)} (existing day${entered})`;
+      } else {
+        dest = '→ new day';
+      }
+      return `<div class="day-row"><span class="d">${fmtDate(m.date)}</span><span class="t">${m.count} txns · ${fmt(m.gross)}</span><span class="m">${fmt(m.net)} + ${fmt(m.tax)} tax</span></div>
+        <div class="sub" style="margin:0 0 8px 2px">${dest}</div>`;
+    }).join('');
+    const eventPicker = z.needsEvent ? `
+      <label style="font-weight:700;display:block;margin:12px 0 5px">Add new days under which event?</label>
+      <select id="zimport-event" style="width:100%;font-size:1.1rem;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink)">
+        ${db.events.map((e) => `<option value="${e.id}">${esc(e.name)}</option>`).join('')}
+        <option value="__new">+ New event…</option>
+      </select>
+      <input id="zimport-newname" placeholder="New event name (e.g. Fremont Fair)" autocomplete="off"
+        style="width:100%;font-size:1.1rem;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);margin-top:8px">` : '';
+    sheet = `
+      <h3>Import Zettle report</h3>
+      <div class="card">${lines}</div>
+      <p class="sub">Card transactions only — cash never hits Zettle. Amounts shown as collected (your keyed price + sales tax).</p>
+      ${eventPicker}
+      <div class="actions">
+        <button class="btn" data-action="modal-cancel">Cancel</button>
+        <button class="btn primary" data-action="zimport-apply">Import ${z.txns.length} transactions</button>
+      </div>`;
   }
 
   root.innerHTML = `<div class="overlay"><div class="sheet">${sheet}</div></div>`;
@@ -362,6 +404,83 @@ function submitSettings(form) {
   render();
 }
 
+/* ---------- Zettle import & backup restore ---------- */
+
+let xlsxLoading = null;
+function ensureXLSX() {
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  xlsxLoading ??= new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'vendor/xlsx.full.min.js';
+    s.onload = () => resolve(window.XLSX);
+    s.onerror = () => { xlsxLoading = null; reject(new Error('could not load spreadsheet parser')); };
+    document.head.appendChild(s);
+  });
+  return xlsxLoading;
+}
+
+async function handleZettleFile(file) {
+  try {
+    showToast('Reading report…');
+    const XLSX = await ensureXLSX();
+    const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+    const parsed = parseZettleWorkbook(wb, XLSX);
+    if (!parsed.txns.length) { showToast('No transactions found in that file'); return; }
+    const matches = parsed.days.map((d) => ({ ...d, day: db.days.find((x) => x.date === d.date) || null }));
+    ui.zimport = { ...parsed, matches, needsEvent: matches.some((m) => !m.day) };
+    ui.modal = 'zimport';
+    render();
+  } catch (err) {
+    showToast('Import failed: ' + err.message);
+  }
+}
+
+function applyZettleImport() {
+  const z = ui.zimport;
+  if (!z) return;
+  let eventId = null;
+  if (z.needsEvent) {
+    const sel = document.getElementById('zimport-event');
+    eventId = sel && sel.value !== '__new' ? sel.value : null;
+    if (!eventId) {
+      const name = document.getElementById('zimport-newname')?.value.trim() || 'Imported event';
+      const ev = { id: uid(), name, venueType: 'Other', boothFee: 0, otherCosts: 0, lastUsed: Date.now() };
+      db.events.push(ev);
+      eventId = ev.id;
+    }
+  }
+  for (const m of z.matches) {
+    let day = m.day;
+    if (!day) {
+      day = { id: uid(), eventId, date: m.date, closedAt: Date.now(), hours: 0, cardTotal: m.gross, floatCash: 0, drawerCash: null, cashActual: 0, notes: 'imported from Zettle', imported: true };
+      db.days.push(day);
+    }
+    day.cardNet = m.net;
+    day.cardTax = m.tax;
+    for (const t of z.txns.filter((x) => x.date === m.date)) {
+      db.zettle[t.key] = { ...t, dayId: day.id };
+    }
+  }
+  save(db);
+  ui.modal = null;
+  ui.zimport = null;
+  showToast(`Imported ${z.txns.length} card transactions`);
+  render();
+}
+
+async function handleBackupFile(file) {
+  try {
+    const next = JSON.parse(await file.text());
+    if (!next.version || !Array.isArray(next.days) || !Array.isArray(next.sales)) throw new Error('not a Glowstone backup file');
+    const stats = `${next.events?.length ?? 0} events, ${next.days.length} days, ${next.sales.length} sales`;
+    if (!confirm(`Replace ALL data on this device with the backup (${stats})? This cannot be undone.`)) return;
+    replaceDb(next);
+    location.reload();
+  } catch (err) {
+    showToast('Restore failed: ' + err.message);
+  }
+}
+
 /* ---------- exports ---------- */
 
 const csvCell = (v) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
@@ -437,7 +556,10 @@ const handlers = {
   'modal-cancel': () => { ui.modal = null; render(); },
   'export-json': () => download(`glowstone-backup-${todayStr()}.json`, JSON.stringify(db, null, 2), 'application/json'),
   'export-sales': exportSales,
-  'export-days': exportDays
+  'export-days': exportDays,
+  'zettle-pick': () => document.getElementById('zettle-file')?.click(),
+  'backup-pick': () => document.getElementById('backup-file')?.click(),
+  'zimport-apply': applyZettleImport
 };
 
 document.addEventListener('click', (e) => {
@@ -457,6 +579,11 @@ document.addEventListener('input', (e) => {
   if (e.target.closest('#form-close')) updateCloseCalc();
 });
 
+document.addEventListener('change', (e) => {
+  if (e.target.id === 'zettle-file' && e.target.files?.[0]) { handleZettleFile(e.target.files[0]); e.target.value = ''; }
+  if (e.target.id === 'backup-file' && e.target.files?.[0]) { handleBackupFile(e.target.files[0]); e.target.value = ''; }
+});
+
 /* ---------- boot ---------- */
 
 function applyTheme() {
@@ -465,6 +592,9 @@ function applyTheme() {
 
 applyTheme();
 render();
+
+// test hooks (harmless in production; lets automated checks drive the import pipeline)
+window.__gs = { handleZettleFile, parseZettleWorkbook, ensureXLSX };
 
 const isDev = ['localhost', '127.0.0.1'].includes(location.hostname);
 if ('serviceWorker' in navigator && location.protocol !== 'file:' && !isDev) {

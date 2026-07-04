@@ -33,6 +33,7 @@ function defaults() {
     events: [],
     days: [],
     sales: [],
+    zettle: {},
     settings: {
       chips: DEFAULT_CHIPS.slice(),
       categories: DEFAULT_CATEGORIES.slice(),
@@ -51,6 +52,7 @@ export function load() {
     const base = defaults();
     db.settings = Object.assign(base.settings, db.settings || {});
     for (const k of ['events', 'days', 'sales']) if (!Array.isArray(db[k])) db[k] = [];
+    if (typeof db.zettle !== 'object' || db.zettle === null) db.zettle = {};
     return db;
   } catch {
     return defaults();
@@ -59,6 +61,11 @@ export function load() {
 
 export function save(db) {
   localStorage.setItem(KEY, JSON.stringify(db));
+}
+
+// Replace the entire database (backup restore). Caller should reload after.
+export function replaceDb(next) {
+  localStorage.setItem(KEY, JSON.stringify(next));
 }
 
 export function uid() {
