@@ -40,7 +40,9 @@ function defaults() {
       chips: DEFAULT_CHIPS.slice(),
       categories: DEFAULT_CATEGORIES.slice(),
       defaultFloat: 200,
-      dark: false
+      dark: false,
+      syncUrl: '',
+      syncKey: ''
     }
   };
 }

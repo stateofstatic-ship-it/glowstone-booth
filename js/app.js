@@ -230,12 +230,18 @@ function renderModal() {
         <label style="display:flex;align-items:center;gap:10px;margin-top:14px">
           <input name="dark" type="checkbox" style="width:24px;height:24px" ${s.dark ? 'checked' : ''}> Dark mode
         </label>
+        <label>Sync URL (Apps Script web app)</label>
+        <input name="syncUrl" value="${esc(s.syncUrl)}" autocomplete="off" placeholder="https://script.google.com/macros/s/…/exec">
+        <label>Sync key</label>
+        <input name="syncKey" value="${esc(s.syncKey)}" autocomplete="off" placeholder="gsk_…">
         <div class="actions">
           <button type="button" class="btn" data-action="modal-cancel">Cancel</button>
           <button type="submit" class="btn primary">Save</button>
         </div>
       </form>
       <h2>Data</h2>
+      <button class="btn primary" style="width:100%;margin-bottom:10px" data-action="sync-now">Sync to Google Sheets now</button>
+      ${db.lastSync ? `<p class="sub" style="text-align:center;margin-top:0">Last sync: ${new Date(db.lastSync.at).toLocaleString()} — ${esc(db.lastSync.summary)}</p>` : ''}
       <div class="row2" style="margin-bottom:10px">
         <button class="btn" data-action="export-sales">Sales CSV</button>
         <button class="btn" data-action="export-days">Days CSV</button>
@@ -378,6 +384,7 @@ function submitClose(form) {
   const perHr = day.hours ? ` · ${fmt(dayTotal(day) / day.hours)}/hr` : '';
   showToast(`Day closed: ${fmt(dayTotal(day))}${perHr}`);
   render();
+  if (db.settings.syncUrl && db.settings.syncKey) syncNow(true);
 }
 
 function submitEvent(form) {
@@ -403,6 +410,8 @@ function submitSettings(form) {
   if (cats.length) db.settings.categories = cats;
   db.settings.defaultFloat = parseFloat(form.floatCash.value) || 0;
   db.settings.dark = form.dark.checked;
+  db.settings.syncUrl = form.syncUrl.value.trim();
+  db.settings.syncKey = form.syncKey.value.trim();
   applyTheme();
   save(db);
   ui.modal = null;
@@ -487,6 +496,48 @@ async function handleBackupFile(file) {
   }
 }
 
+/* ---------- sheet sync ---------- */
+
+async function syncNow(auto) {
+  const { syncUrl, syncKey } = db.settings;
+  if (!syncUrl || !syncKey) { if (!auto) showToast('Set the Sync URL and key in Settings first'); return; }
+  const days = db.days.filter((d) => d.closedAt && !d.synced);
+  const sales = db.sales.filter((s) => !s.synced);
+  const ztx = Object.values(db.zettle).filter((z) => !z.synced);
+  if (!days.length && !sales.length && !ztx.length) { if (!auto) showToast('Nothing new to sync'); return; }
+  const evName = (dayId) => { const d = dayById(dayId); return d ? eventById(d.eventId)?.name || '' : ''; };
+  const payload = {
+    token: syncKey,
+    days: days.map((d) => ({
+      date: d.date,
+      event: eventById(d.eventId)?.name || '',
+      cash: d.cashActual ?? cashLogged(d),
+      card: d.cardTotal || 0,
+      hours: d.hours || 0,
+      transactions: daySales(d).filter((s) => s.payType === 'cash').length + zettleTxnsFor(d).length || ''
+    })),
+    txns: [
+      ...sales.map((s) => ({ key: 'app#' + s.id, date: dayById(s.dayId)?.date || '', time: fmtTime(s.ts), event: evName(s.dayId), amount: s.amount, payType: s.payType, category: s.category || '', source: 'app' })),
+      ...ztx.map((z) => ({ key: z.key, date: z.date, time: fmtTime(z.ts), event: evName(z.dayId), amount: z.gross, payType: 'card', category: '', source: 'zettle', net: z.net, tax: z.tax, staff: z.staff }))
+    ]
+  };
+  if (!auto) showToast('Syncing…');
+  try {
+    const res = await fetch(syncUrl, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) });
+    const out = await res.json();
+    if (!out.ok) throw new Error(out.error || 'sync rejected');
+    days.forEach((d) => { d.synced = true; });
+    sales.forEach((s) => { s.synced = true; });
+    ztx.forEach((z) => { z.synced = true; });
+    db.lastSync = { at: Date.now(), summary: `${out.days} day(s), ${out.txns} txns added` };
+    save(db);
+    showToast(`Synced: ${out.days} day(s) + ${out.txns} txns to the sheet`);
+    render();
+  } catch (err) {
+    showToast('Sync failed: ' + err.message);
+  }
+}
+
 /* ---------- exports ---------- */
 
 const csvCell = (v) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
@@ -565,7 +616,8 @@ const handlers = {
   'export-days': exportDays,
   'zettle-pick': () => document.getElementById('zettle-file')?.click(),
   'backup-pick': () => document.getElementById('backup-file')?.click(),
-  'zimport-apply': applyZettleImport
+  'zimport-apply': applyZettleImport,
+  'sync-now': () => syncNow(false)
 };
 
 document.addEventListener('click', (e) => {
@@ -600,7 +652,7 @@ applyTheme();
 render();
 
 // test hooks (harmless in production; lets automated checks drive the import pipeline)
-window.__gs = { handleZettleFile, parseZettleWorkbook, ensureXLSX };
+window.__gs = { handleZettleFile, parseZettleWorkbook, ensureXLSX, syncNow };
 
 const isDev = ['localhost', '127.0.0.1'].includes(location.hostname);
 if ('serviceWorker' in navigator && location.protocol !== 'file:' && !isDev) {
