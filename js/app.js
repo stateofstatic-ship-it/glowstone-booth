@@ -2,7 +2,7 @@ import { load, save, replaceDb, uid, todayStr, VENUE_TYPES } from './store.js';
 import { parseZettleWorkbook } from './zettle.js';
 
 const db = load();
-const ui = { modal: null, forceHome: false, pad: null, notable: null, undoId: null, toastTimer: null, zimport: null, dayEditId: null };
+const ui = { modal: null, forceHome: false, pad: null, notable: null, undoId: null, toastTimer: null, zimport: null, dayEditId: null, insights: null };
 
 /* ---------- helpers ---------- */
 
@@ -23,6 +23,7 @@ const daySales = (day) => db.sales.filter((s) => s.dayId === day.id);
 const cashLogged = (day) => daySales(day).filter((s) => s.payType === 'cash').reduce((t, s) => t + s.amount, 0);
 const dayTotal = (day) => (day.closedAt ? (day.cardTotal || 0) + (day.cashActual || 0) : null);
 const zettleTxnsFor = (day) => Object.values(db.zettle).filter((z) => z.dayId === day.id);
+const pct = (n) => Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 1 }) + '%';
 
 /* ---------- views ---------- */
 
@@ -38,6 +39,7 @@ function homeView() {
     <div class="topbar">
       <h1>Glowstone Booth</h1>
       <div class="spacer"></div>
+      <button class="btn small ghost" data-action="insights-open">Insights</button>
       <button class="btn small ghost" data-action="settings-open">⚙︎ Settings</button>
     </div>`;
 
@@ -128,6 +130,74 @@ function padMarkup(action, value) {
     <div class="pad">
       ${keys.map((k) => `<button data-action="${action}" data-k="${k}">${k === 'back' ? '⌫' : k}</button>`).join('')}
     </div>`;
+}
+
+function insightsMarkup() {
+  const data = ui.insights;
+  if (!db.settings.syncUrl || !db.settings.syncKey) {
+    return `
+      <h3>Insights</h3>
+      <p class="sub">Set the Sync URL and key in Settings first. Insights come from the same Apps Script endpoint that updates the master sheet.</p>
+      <button class="btn primary" style="width:100%" data-action="settings-open">Open Settings</button>`;
+  }
+  if (!data || data.loading) {
+    return `
+      <h3>Insights</h3>
+      <div class="card"><strong>Loading sheet insights...</strong><p class="sub">Reading Dashboard, Event_Analysis, Daily_Sales, and Txn_Log.</p></div>`;
+  }
+  if (data.error) {
+    return `
+      <h3>Insights</h3>
+      <div class="card"><strong>Could not load insights</strong><p class="sub">${esc(data.error)}</p></div>
+      <button class="btn primary" style="width:100%" data-action="insights-refresh">Try again</button>`;
+  }
+
+  const m = data.metrics || {};
+  const events = data.events || [];
+  const yoy = data.yoy || [];
+  const tax = data.tax || [];
+  const quality = data.dataQuality || [];
+  const recs = data.recommendations || [];
+  const best = events[0];
+  const worst = events.slice().sort((a, b) => (a.netPerDay || 0) - (b.netPerDay || 0))[0];
+  const up = yoy[0];
+  const down = yoy.slice().sort((a, b) => (a.changePct || 0) - (b.changePct || 0))[0];
+  const txn = data.txnStats;
+  const eventRows = events.slice(0, 6).map((e) => `
+    <div class="day-row">
+      <span class="d">${esc(e.state || '') || 'OR'}</span>
+      <span class="t">${esc(e.event)}</span>
+      <span class="m">${fmt(e.netPerDay)}/net day</span>
+    </div>`).join('');
+  const recRows = recs.map((r) => `<div class="insight-note"><strong>${esc(r.title)}</strong><span>${esc(r.detail)}</span></div>`).join('');
+  const taxTotal = tax.reduce((s, x) => s + (x.tax || 0), 0);
+
+  return `
+    <h3>Insights</h3>
+    <div class="sub" style="margin-bottom:10px">Sheet refresh: ${data.generatedAt ? new Date(data.generatedAt).toLocaleString() : 'just now'}</div>
+    <div class="kpi-grid">
+      <div class="kpi"><span>Net revenue</span><strong>${fmt(m.netRevenue)}</strong></div>
+      <div class="kpi"><span>Net after costs</span><strong>${fmt(m.netAfterCosts)}</strong></div>
+      <div class="kpi"><span>Selling days</span><strong>${Number(m.sellingDays || 0)}</strong></div>
+      <div class="kpi"><span>Revenue / hour</span><strong>${fmt(m.revenuePerHour)}</strong></div>
+    </div>
+    ${best ? `<div class="card"><strong>Best event so far: ${esc(best.event)}</strong><p class="sub">${fmt(best.netPerDay)}/day net of tax, ${fmt(best.netAfterCosts)} after event costs.</p></div>` : ''}
+    ${worst && worst !== best ? `<div class="card"><strong>Lowest performer: ${esc(worst.event)}</strong><p class="sub">${fmt(worst.netPerDay)}/day net of tax. Check booth fee, venue fit, and product mix before rebooking.</p></div>` : ''}
+    <h2>Event Ranking</h2>
+    <div class="card">${eventRows || '<p class="sub">No event rows yet.</p>'}</div>
+    <h2>Movement</h2>
+    <div class="card">
+      ${up ? `<div class="day-row"><span class="d">Best</span><span class="t">${esc(up.event)}</span><span class="m">${pct(up.changePct)} YoY</span></div>` : ''}
+      ${down ? `<div class="day-row"><span class="d">Watch</span><span class="t">${esc(down.event)}</span><span class="m">${pct(down.changePct)} YoY</span></div>` : ''}
+      <div class="day-row"><span class="d">Tax</span><span class="t">WA normalization</span><span class="m">${fmt(taxTotal)} est.</span></div>
+    </div>
+    ${txn ? `<h2>Latest Detail</h2><div class="card">
+      <strong>${esc(txn.event)} · ${esc(txn.date)}</strong>
+      <p class="sub">${txn.cardTransactions} card txns, ${txn.cashTaps} cash taps. Median card basket ${fmt(txn.medianCardNet)}; ${pct(txn.cardOver100Pct)} of card baskets were $100+.</p>
+    </div>` : ''}
+    ${recRows ? `<h2>BI Notes</h2><div class="card">${recRows}</div>` : ''}
+    ${quality.length ? `<h2>Data Checks</h2><div class="card">${quality.slice(0, 5).map((q) => `<p class="sub">• ${esc(q)}</p>`).join('')}</div>` : ''}
+    <button class="btn primary" style="width:100%" data-action="insights-refresh">Refresh insights</button>`;
 }
 
 function renderModal() {
@@ -300,7 +370,11 @@ function renderModal() {
       <button class="btn primary" style="width:100%" data-action="zettle-pick">Import Zettle report (.xlsx)</button>
       <input type="file" id="zettle-file" accept=".xlsx,.xls" hidden>
       <input type="file" id="backup-file" accept=".json,application/json" hidden>
-      <p class="sub" style="text-align:center">Glowstone Booth v0.4.4</p>`;
+      <p class="sub" style="text-align:center">Glowstone Booth v0.4.5</p>`;
+  }
+
+  if (ui.modal === 'insights') {
+    sheet = insightsMarkup();
   }
 
   if (ui.modal === 'zimport') {
@@ -721,6 +795,32 @@ async function syncNow(auto) {
   }
 }
 
+async function loadInsights() {
+  const { syncUrl, syncKey } = db.settings;
+  if (!syncUrl || !syncKey) {
+    ui.modal = 'insights';
+    ui.insights = null;
+    render();
+    return;
+  }
+  ui.modal = 'insights';
+  ui.insights = { loading: true };
+  render();
+  try {
+    const url = new URL(syncUrl);
+    url.searchParams.set('token', syncKey);
+    url.searchParams.set('action', 'insights');
+    const res = await fetch(url.toString(), { method: 'GET' });
+    const out = await res.json();
+    if (!out.ok) throw new Error(out.error || 'insights rejected');
+    ui.insights = out;
+    render();
+  } catch (err) {
+    ui.insights = { error: err.message };
+    render();
+  }
+}
+
 /* ---------- exports ---------- */
 
 const csvCell = (v) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
@@ -766,6 +866,8 @@ function openDayEdit(dayId) {
 const handlers = {
   'go-home': () => { ui.forceHome = true; render(); },
   'go-day': () => { ui.forceHome = false; render(); },
+  'insights-open': loadInsights,
+  'insights-refresh': loadInsights,
   'day-open': (d) => openDayEdit(d.id),
   'start-day': () => { ui.modal = db.events.length ? 'pickEvent' : 'newEvent'; render(); },
   'pick-event': (d) => startDayFor(d.id),
@@ -849,7 +951,7 @@ applyTheme();
 render();
 
 // test hooks (harmless in production; lets automated checks drive the import pipeline)
-window.__gs = { handleZettleFile, parseZettleWorkbook, ensureXLSX, syncNow };
+window.__gs = { handleZettleFile, parseZettleWorkbook, ensureXLSX, syncNow, loadInsights };
 
 const isDev = ['localhost', '127.0.0.1'].includes(location.hostname);
 if ('serviceWorker' in navigator && location.protocol !== 'file:' && !isDev) {

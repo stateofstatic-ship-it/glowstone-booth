@@ -99,6 +99,16 @@ h2 { font-size: 1.05rem; margin: 18px 0 8px; font-weight: 700; color: var(--ink-
 
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
+.kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+.kpi {
+  background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px;
+}
+.kpi span { display: block; color: var(--ink-soft); font-size: 0.82rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.kpi strong { display: block; font-size: 1.25rem; margin-top: 4px; }
+.insight-note { display: grid; gap: 4px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.insight-note:last-child { border-bottom: none; }
+.insight-note span { color: var(--ink-soft); font-size: 0.94rem; }
+
 .sale-row { display: flex; align-items: center; gap: 10px; padding: 10px 4px; border-bottom: 1px solid var(--line); }
 .sale-row:last-child { border-bottom: none; }
 .sale-row .amt { font-weight: 800; font-size: 1.15rem; min-width: 74px; }
