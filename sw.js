@@ -1,10 +1,12 @@
-const VERSION = 'gs-booth-v0.4.2';
+const VERSION = 'gs-booth-v0.4.4';
 const ASSETS = [
   './',
   './index.html',
   './css/app.css',
   './js/app.js',
   './js/store.js',
+  './js/zettle.js',
+  './vendor/xlsx.full.min.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png'

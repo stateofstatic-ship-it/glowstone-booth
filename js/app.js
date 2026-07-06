@@ -2,7 +2,7 @@ import { load, save, replaceDb, uid, todayStr, VENUE_TYPES } from './store.js';
 import { parseZettleWorkbook } from './zettle.js';
 
 const db = load();
-const ui = { modal: null, forceHome: false, pad: null, notable: null, undoId: null, toastTimer: null, zimport: null };
+const ui = { modal: null, forceHome: false, pad: null, notable: null, undoId: null, toastTimer: null, zimport: null, dayEditId: null };
 
 /* ---------- helpers ---------- */
 
@@ -64,10 +64,10 @@ function homeView() {
       const total = closed.reduce((t, d) => t + dayTotal(d), 0);
       const fees = (ev.boothFee || 0) + (ev.otherCosts || 0);
       const rows = days.map((d) => {
-        if (!d.closedAt) return `<div class="day-row" data-day-id="${d.id}"><span class="d">${fmtDate(d.date)}</span><span class="t">open — cash logged ${fmt(cashLogged(d))}</span></div>`;
+        if (!d.closedAt) return `<div class="day-row tappable" data-action="day-open" data-id="${d.id}" data-day-id="${d.id}"><span class="d">${fmtDate(d.date)}</span><span class="t">open — cash logged ${fmt(cashLogged(d))}</span></div>`;
         const perHr = d.hours ? fmt(dayTotal(d) / d.hours) + '/hr' : '';
         const ztx = zettleTxnsFor(d).length;
-        return `<div class="day-row" data-day-id="${d.id}"><span class="d">${fmtDate(d.date)}</span><span class="t">${fmt(dayTotal(d))}</span><span class="m">${d.hours ? d.hours + 'h ' + perHr : ''}${ztx ? ' · ' + ztx + ' card txns' : ''}</span></div>`;
+        return `<div class="day-row tappable" data-action="day-open" data-id="${d.id}" data-day-id="${d.id}"><span class="d">${fmtDate(d.date)}</span><span class="t">${fmt(dayTotal(d))}</span><span class="m">${d.hours ? d.hours + 'h ' + perHr : ''}${ztx ? ' · ' + ztx + ' card txns' : ''}</span></div>`;
       }).join('');
       html += `
         <div class="card">
@@ -216,6 +216,53 @@ function renderModal() {
       </form>`;
   }
 
+  if (ui.modal === 'dayEdit') {
+    const day = dayById(ui.dayEditId);
+    if (!day) { ui.modal = null; root.innerHTML = ''; return; }
+    const ev = eventById(day.eventId);
+    const logged = cashLogged(day);
+    const ztx = zettleTxnsFor(day);
+    const total = day.closedAt ? dayTotal(day) : (day.cardTotal || 0) + logged;
+    const syncNote = day.synced
+      ? '<p class="sub">This day has already synced. Saving changes will queue a sheet update on the next sync.</p>' : '';
+    const zettleNote = ztx.length
+      ? `<p class="sub">${ztx.length} imported Zettle transaction(s): ${fmt(ztx.reduce((s, t) => s + t.gross, 0))}${day.cardTax ? ` · tax ${fmt(day.cardTax)}` : ''}</p>` : '<p class="sub">No Zettle transactions imported yet.</p>';
+    sheet = `
+      <h3>Edit day — ${esc(ev?.name || 'Selling day')}</h3>
+      <div class="card">
+        <div class="day-row"><span class="d">Cash</span><span class="t">${fmt(logged)} logged</span><span class="m">${daySales(day).filter((s) => s.payType === 'cash').length} taps</span></div>
+        <div class="day-row"><span class="d">Card</span><span class="t">${fmt(day.cardTotal || 0)}</span><span class="m">${ztx.length} txns</span></div>
+        <div class="day-row"><span class="d">Total</span><span class="t">${fmt(total)}</span><span class="m">${day.hours ? fmt(total / day.hours) + '/hr' : ''}</span></div>
+      </div>
+      ${zettleNote}
+      ${syncNote}
+      <form id="form-day-edit">
+        <label>Event</label>
+        <select name="eventId">${db.events.map((e) => `<option value="${e.id}" ${e.id === day.eventId ? 'selected' : ''}>${esc(e.name)}</option>`).join('')}</select>
+        <label>Date</label>
+        <input name="date" type="date" value="${esc(day.date)}">
+        <label>Hours (incl. drive + setup/teardown)</label>
+        <input name="hours" type="number" inputmode="decimal" step="0.5" min="0" value="${day.hours ?? ''}">
+        <label>Card total from Zettle ($)</label>
+        <input name="cardTotal" type="number" inputmode="decimal" step="0.01" value="${day.cardTotal ?? ''}">
+        <label>Cash drawer count at close ($)</label>
+        <input name="drawerCash" type="number" inputmode="decimal" step="1" value="${day.drawerCash ?? ''}" placeholder="leave blank to use logged cash">
+        <label>Starting float ($)</label>
+        <input name="floatCash" type="number" inputmode="decimal" step="1" value="${day.floatCash ?? db.settings.defaultFloat}">
+        <label>Notes</label>
+        <textarea name="notes" rows="3" placeholder="weather, booth spot, crowd...">${esc(day.notes || '')}</textarea>
+        <div class="calc-line" id="day-edit-calc"></div>
+        <div class="actions">
+          <button type="button" class="btn" data-action="modal-cancel">Cancel</button>
+          <button type="submit" class="btn primary">Save changes</button>
+        </div>
+      </form>
+      <h2>Zettle</h2>
+      <button class="btn primary" style="width:100%;margin-bottom:10px" data-action="zettle-pick-day">Import Zettle report into this day</button>
+      <input type="file" id="zettle-day-file" accept=".xlsx,.xls" hidden>
+      <button class="btn danger" style="width:100%" data-action="day-delete">Delete day</button>`;
+  }
+
   if (ui.modal === 'settings') {
     const s = db.settings;
     sheet = `
@@ -253,7 +300,7 @@ function renderModal() {
       <button class="btn primary" style="width:100%" data-action="zettle-pick">Import Zettle report (.xlsx)</button>
       <input type="file" id="zettle-file" accept=".xlsx,.xls" hidden>
       <input type="file" id="backup-file" accept=".json,application/json" hidden>
-      <p class="sub" style="text-align:center">Glowstone Booth v0.4.2</p>`;
+      <p class="sub" style="text-align:center">Glowstone Booth v0.4.4</p>`;
   }
 
   if (ui.modal === 'zimport') {
@@ -270,6 +317,7 @@ function renderModal() {
       return `<div class="day-row"><span class="d">${fmtDate(m.date)}</span><span class="t">${m.count} txns · ${fmt(m.gross)}</span><span class="m">${fmt(m.net)} + ${fmt(m.tax)} tax</span></div>
         <div class="sub" style="margin:0 0 8px 2px">${dest}</div>`;
     }).join('');
+    const target = z.targetDayId ? dayById(z.targetDayId) : null;
     const eventPicker = z.needsEvent ? `
       <label style="font-weight:700;display:block;margin:12px 0 5px">Add new days under which event?</label>
       <select id="zimport-event" style="width:100%;font-size:1.1rem;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink)">
@@ -279,7 +327,7 @@ function renderModal() {
       <input id="zimport-newname" placeholder="New event name (e.g. Fremont Fair)" autocomplete="off"
         style="width:100%;font-size:1.1rem;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);margin-top:8px">` : '';
     sheet = `
-      <h3>Import Zettle report</h3>
+      <h3>${target ? `Import to ${esc(eventById(target.eventId)?.name || 'this day')}` : 'Import Zettle report'}</h3>
       <div class="card">${lines}</div>
       <p class="sub">Card transactions only — cash never hits Zettle. Amounts shown as collected (your keyed price + sales tax).</p>
       ${eventPicker}
@@ -291,6 +339,7 @@ function renderModal() {
 
   root.innerHTML = `<div class="overlay"><div class="sheet">${sheet}</div></div>`;
   if (ui.modal === 'close') updateCloseCalc();
+  if (ui.modal === 'dayEdit') updateDayEditCalc();
 }
 
 /* ---------- toast ---------- */
@@ -387,6 +436,52 @@ function submitClose(form) {
   if (db.settings.syncUrl && db.settings.syncKey) syncNow(true);
 }
 
+function updateDayEditCalc() {
+  const form = document.getElementById('form-day-edit');
+  const out = document.getElementById('day-edit-calc');
+  const day = dayById(ui.dayEditId);
+  if (!form || !out || !day) return;
+  const logged = cashLogged(day);
+  const card = parseFloat(form.cardTotal.value) || 0;
+  const float = parseFloat(form.floatCash.value) || 0;
+  const drawerRaw = form.drawerCash.value.trim();
+  const cashActual = drawerRaw === '' ? logged : (parseFloat(drawerRaw) || 0) - float;
+  const delta = cashActual - logged;
+  const cls = Math.abs(delta) < 1 ? 'ok' : 'warn';
+  out.innerHTML = `Day total: <strong>${fmt(card + cashActual)}</strong><br>` +
+    `<span class="${cls}">Cash ${fmt(cashActual)} vs logged ${fmt(logged)} (Δ ${delta >= 0 ? '+' : ''}${fmt(delta)})</span>`;
+}
+
+function submitDayEdit(form) {
+  const day = dayById(ui.dayEditId);
+  if (!day) return;
+  const oldDate = day.date;
+  const oldEventId = day.eventId;
+  const logged = cashLogged(day);
+  const float = parseFloat(form.floatCash.value) || 0;
+  const drawerRaw = form.drawerCash.value.trim();
+
+  day.eventId = form.eventId.value;
+  day.date = form.date.value || day.date;
+  day.hours = parseFloat(form.hours.value) || 0;
+  day.cardTotal = parseFloat(form.cardTotal.value) || 0;
+  day.floatCash = float;
+  day.drawerCash = drawerRaw === '' ? null : parseFloat(drawerRaw) || 0;
+  day.cashActual = drawerRaw === '' ? logged : (parseFloat(drawerRaw) || 0) - float;
+  day.notes = form.notes.value.trim();
+  if (day.closedAt) day.synced = false;
+
+  if (oldDate !== day.date || oldEventId !== day.eventId) {
+    daySales(day).forEach((s) => { s.synced = false; });
+    zettleTxnsFor(day).forEach((z) => { z.synced = false; });
+  }
+
+  save(db);
+  ui.modal = null;
+  showToast(day.closedAt ? 'Day updated — queued for next sync' : 'Day updated');
+  render();
+}
+
 function submitEvent(form) {
   const ev = {
     id: uid(),
@@ -434,15 +529,36 @@ function ensureXLSX() {
   return xlsxLoading;
 }
 
-async function handleZettleFile(file) {
+async function handleZettleFile(file, targetDayId = null) {
   try {
     showToast('Reading report…');
     const XLSX = await ensureXLSX();
     const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
     const parsed = parseZettleWorkbook(wb, XLSX);
     if (!parsed.txns.length) { showToast('No transactions found in that file'); return; }
-    const matches = parsed.days.map((d) => ({ ...d, day: db.days.find((x) => x.date === d.date) || null }));
-    ui.zimport = { ...parsed, matches, needsEvent: matches.some((m) => !m.day) };
+
+    if (targetDayId) {
+      const target = dayById(targetDayId);
+      if (!target) { showToast('That day no longer exists'); return; }
+      const match = parsed.days.find((d) => d.date === target.date);
+      if (!match) {
+        const dates = parsed.days.map((d) => fmtDate(d.date)).join(', ');
+        showToast(`Report is for ${dates}; this day is ${fmtDate(target.date)}`);
+        return;
+      }
+      const txns = parsed.txns.filter((t) => t.date === target.date);
+      ui.zimport = {
+        ...parsed,
+        txns,
+        days: [match],
+        matches: [{ ...match, day: target }],
+        needsEvent: false,
+        targetDayId
+      };
+    } else {
+      const matches = parsed.days.map((d) => ({ ...d, day: db.days.find((x) => x.date === d.date) || null }));
+      ui.zimport = { ...parsed, matches, needsEvent: matches.some((m) => !m.day), targetDayId: null };
+    }
     ui.modal = 'zimport';
     render();
   } catch (err) {
@@ -470,16 +586,20 @@ function applyZettleImport() {
       day = { id: uid(), eventId, date: m.date, closedAt: Date.now(), hours: 0, cardTotal: m.gross, floatCash: 0, drawerCash: null, cashActual: 0, notes: 'imported from Zettle', imported: true };
       db.days.push(day);
     }
+    day.cardTotal = m.gross;
     day.cardNet = m.net;
     day.cardTax = m.tax;
+    if (day.closedAt) day.synced = false;
     for (const t of z.txns.filter((x) => x.date === m.date)) {
       db.zettle[t.key] = { ...t, dayId: day.id };
     }
   }
   save(db);
-  ui.modal = null;
+  const targetDayId = z.targetDayId || null;
+  ui.dayEditId = targetDayId;
+  ui.modal = targetDayId ? 'dayEdit' : null;
   ui.zimport = null;
-  showToast(`Imported ${z.txns.length} card transactions`);
+  showToast(`Imported ${z.txns.length} card transactions${targetDayId ? ' into day' : ''}`);
   render();
 }
 
@@ -513,12 +633,15 @@ function deleteDayPrompt(dayId) {
   for (const k of Object.keys(db.zettle)) if (db.zettle[k].dayId === dayId) delete db.zettle[k];
   db.days = db.days.filter((d) => d.id !== dayId);
   if (db.activeDayId === dayId) db.activeDayId = null;
+  if (ui.dayEditId === dayId) ui.dayEditId = null;
+  ui.modal = null;
   save(db);
   showToast('Day deleted');
   render();
 }
 
 let press = null;
+let suppressDayClick = false;
 function cancelPress() { if (press) { clearTimeout(press.t); press = null; } }
 document.addEventListener('pointerdown', (e) => {
   const row = e.target.closest('[data-day-id]');
@@ -526,7 +649,12 @@ document.addEventListener('pointerdown', (e) => {
   cancelPress();
   press = {
     x: e.clientX, y: e.clientY,
-    t: setTimeout(() => { press = null; deleteDayPrompt(row.dataset.dayId); }, 600)
+    t: setTimeout(() => {
+      suppressDayClick = true;
+      setTimeout(() => { suppressDayClick = false; }, 500);
+      press = null;
+      deleteDayPrompt(row.dataset.dayId);
+    }, 600)
   };
 });
 document.addEventListener('pointerup', cancelPress);
@@ -536,7 +664,13 @@ document.addEventListener('pointermove', (e) => {
 });
 document.addEventListener('contextmenu', (e) => {
   const row = e.target.closest('[data-day-id]');
-  if (row) { e.preventDefault(); cancelPress(); deleteDayPrompt(row.dataset.dayId); }
+  if (row) {
+    e.preventDefault();
+    suppressDayClick = true;
+    setTimeout(() => { suppressDayClick = false; }, 500);
+    cancelPress();
+    deleteDayPrompt(row.dataset.dayId);
+  }
 });
 
 /* ---------- sheet sync ---------- */
@@ -572,9 +706,15 @@ async function syncNow(auto) {
     days.forEach((d) => { d.synced = true; });
     sales.forEach((s) => { s.synced = true; });
     ztx.forEach((z) => { z.synced = true; });
-    db.lastSync = { at: Date.now(), summary: `${out.days} day(s), ${out.txns} txns added` };
+    const parts = [
+      `${out.days || 0} day(s) added`,
+      `${out.daysUpdated || 0} day(s) updated`,
+      `${out.txns || 0} txn(s) added`,
+      `${out.txnsUpdated || 0} txn(s) updated`
+    ];
+    db.lastSync = { at: Date.now(), summary: parts.join(', ') };
     save(db);
-    showToast(`Synced: ${out.days} day(s) + ${out.txns} txns to the sheet`);
+    showToast(`Synced: ${db.lastSync.summary}`);
     render();
   } catch (err) {
     showToast('Sync failed: ' + err.message);
@@ -613,11 +753,20 @@ function exportDays() {
   download(`glowstone-days-${todayStr()}.csv`, rows.join('\n'), 'text/csv');
 }
 
+function openDayEdit(dayId) {
+  if (suppressDayClick) return;
+  if (!dayById(dayId)) return;
+  ui.dayEditId = dayId;
+  ui.modal = 'dayEdit';
+  render();
+}
+
 /* ---------- event wiring ---------- */
 
 const handlers = {
   'go-home': () => { ui.forceHome = true; render(); },
   'go-day': () => { ui.forceHome = false; render(); },
+  'day-open': (d) => openDayEdit(d.id),
   'start-day': () => { ui.modal = db.events.length ? 'pickEvent' : 'newEvent'; render(); },
   'pick-event': (d) => startDayFor(d.id),
   'new-event': () => { ui.modal = 'newEvent'; render(); },
@@ -658,8 +807,10 @@ const handlers = {
   'export-sales': exportSales,
   'export-days': exportDays,
   'zettle-pick': () => document.getElementById('zettle-file')?.click(),
+  'zettle-pick-day': () => document.getElementById('zettle-day-file')?.click(),
   'backup-pick': () => document.getElementById('backup-file')?.click(),
   'zimport-apply': applyZettleImport,
+  'day-delete': () => deleteDayPrompt(ui.dayEditId),
   'sync-now': () => syncNow(false)
 };
 
@@ -673,15 +824,18 @@ document.addEventListener('submit', (e) => {
   e.preventDefault();
   if (e.target.id === 'form-close') submitClose(e.target);
   if (e.target.id === 'form-event') submitEvent(e.target);
+  if (e.target.id === 'form-day-edit') submitDayEdit(e.target);
   if (e.target.id === 'form-settings') submitSettings(e.target);
 });
 
 document.addEventListener('input', (e) => {
   if (e.target.closest('#form-close')) updateCloseCalc();
+  if (e.target.closest('#form-day-edit')) updateDayEditCalc();
 });
 
 document.addEventListener('change', (e) => {
   if (e.target.id === 'zettle-file' && e.target.files?.[0]) { handleZettleFile(e.target.files[0]); e.target.value = ''; }
+  if (e.target.id === 'zettle-day-file' && e.target.files?.[0]) { handleZettleFile(e.target.files[0], ui.dayEditId); e.target.value = ''; }
   if (e.target.id === 'backup-file' && e.target.files?.[0]) { handleBackupFile(e.target.files[0]); e.target.value = ''; }
 });
 

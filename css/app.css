@@ -111,6 +111,8 @@ h2 { font-size: 1.05rem; margin: 18px 0 8px; font-weight: 700; color: var(--ink-
 .badge.cat { background: var(--chip-bg); color: var(--ink); }
 
 .day-row { display: flex; align-items: baseline; gap: 10px; padding: 9px 2px; border-bottom: 1px solid var(--line); user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.day-row.tappable { cursor: pointer; }
+.day-row.tappable:active { background: var(--chip-bg); }
 .day-row:last-child { border-bottom: none; }
 .day-row .d { min-width: 86px; color: var(--ink-soft); font-size: 0.92rem; }
 .day-row .t { font-weight: 800; flex: 1; }
