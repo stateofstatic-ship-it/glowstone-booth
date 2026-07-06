@@ -143,7 +143,7 @@ function insightsMarkup() {
   if (!data || data.loading) {
     return `
       <h3>Insights</h3>
-      <div class="card"><strong>Loading sheet insights...</strong><p class="sub">Reading Dashboard, Event_Analysis, Daily_Sales, and Txn_Log.</p></div>`;
+      <div class="card"><strong>Loading sheet insights...</strong><p class="sub">Reading Dashboard, Event_Analysis, Historical_Sales, Daily_Sales, and Txn_Log.</p></div>`;
   }
   if (data.error) {
     return `
@@ -156,6 +156,8 @@ function insightsMarkup() {
   const events = data.events || [];
   const yoy = data.yoy || [];
   const tax = data.tax || [];
+  const history = data.history || {};
+  const histTop = history.topEvents || [];
   const quality = data.dataQuality || [];
   const recs = data.recommendations || [];
   const best = events[0];
@@ -181,6 +183,10 @@ function insightsMarkup() {
       <div class="kpi"><span>Selling days</span><strong>${Number(m.sellingDays || 0)}</strong></div>
       <div class="kpi"><span>Revenue / hour</span><strong>${fmt(m.revenuePerHour)}</strong></div>
     </div>
+    ${history.rows ? `<div class="card">
+      <strong>Historical baseline: ${esc((history.years || []).join(', '))}</strong>
+      <p class="sub">${history.eventRows || history.rows} event rows, ${fmt(history.totalRevenue)} recorded income. Top historical comp: ${histTop[0] ? `${esc(histTop[0].event)} at ${fmt(histTop[0].perDay)}/day` : 'none yet'}.</p>
+    </div>` : ''}
     ${best ? `<div class="card"><strong>Best event so far: ${esc(best.event)}</strong><p class="sub">${fmt(best.netPerDay)}/day net of tax, ${fmt(best.netAfterCosts)} after event costs.</p></div>` : ''}
     ${worst && worst !== best ? `<div class="card"><strong>Lowest performer: ${esc(worst.event)}</strong><p class="sub">${fmt(worst.netPerDay)}/day net of tax. Check booth fee, venue fit, and product mix before rebooking.</p></div>` : ''}
     <h2>Event Ranking</h2>
