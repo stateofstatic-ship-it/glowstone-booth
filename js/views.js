@@ -446,7 +446,7 @@ export function renderModal() {
       <button class="btn primary" style="width:100%" data-action="zettle-pick">Import Zettle report (.xlsx)</button>
       <input type="file" id="zettle-file" accept=".xlsx,.xls" hidden>
       <input type="file" id="backup-file" accept=".json,application/json" hidden>
-      <p class="sub" style="text-align:center">Glowstone Booth v0.5.2</p>`;
+      <p class="sub" style="text-align:center">Glowstone Booth v0.5.3</p>`;
   }
 
   if (ui.modal === 'insights') sheet = insightsMarkup();

@@ -58,6 +58,7 @@ const handlers = {
     const s = db.sales.find((x) => x.id === d.id);
     if (s && confirm(`Remove ${fmt(s.amount)} ${s.payType} sale?`)) {
       db.sales = db.sales.filter((x) => x.id !== d.id);
+      persist();
       render();
     }
   },
