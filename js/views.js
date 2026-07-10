@@ -214,7 +214,7 @@ function priceSelectionMarkup() {
   </div>`;
 }
 
-function priceResultMarkup() {
+export function priceResultMarkup() {
   const p = ui.price;
   const m = selectedMaterial();
   const weight = Number(p?.weight) || 0;
