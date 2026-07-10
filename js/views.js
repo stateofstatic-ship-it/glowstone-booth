@@ -195,14 +195,18 @@ export function priceMatchesMarkup() {
   const p = ui.price;
   const query = (p?.search || '').trim().toLowerCase();
   if (!p?.materials?.length) return '<p class="sub">No material costs are available yet.</p>';
-  if (!query) return '<p class="sub">Search by material, quality, supplier, or trip.</p>';
-  const matches = p.materials.filter((m) => [m.material, m.quality, m.vendor, m.sourceTrip].join(' ').toLowerCase().includes(query)).slice(0, 12);
+  const matches = (query
+    ? p.materials.filter((m) => [m.material, m.quality, m.vendor, m.sourceTrip].join(' ').toLowerCase().includes(query))
+    : p.materials).slice(0, 12);
   if (!matches.length) return '<p class="sub">No matching material. Try a shorter word.</p>';
-  return matches.map((m) => `
+  const hint = query
+    ? `${matches.length} matching material${matches.length === 1 ? '' : 's'}`
+    : `Browse ${matches.length} current-stock material${matches.length === 1 ? '' : 's'}, or type to narrow the list.`;
+  return `<p class="sub">${hint}</p>${matches.map((m) => `
     <button class="material-match ${m.id === p.selectedId ? 'sel' : ''}" data-action="price-material" data-id="${esc(m.id)}">
       <span>${esc(m.material)}${m.quality ? ` · ${esc(m.quality)}` : ''}</span>
-      <small>${fmt(m.unitCost)}/kg · ${esc(m.sourceTrip)}</small>
-    </button>`).join('');
+      <small>${fmt(m.unitCost)}/kg · ${esc(m.sourceTrip)} · ${esc(m.costBasis || 'recorded cost')}</small>
+    </button>`).join('')}`;
 }
 
 function priceSelectionMarkup() {
@@ -246,8 +250,8 @@ function priceToolMarkup() {
     <h3>Price Tool</h3>
     <p class="sub">Material cost × weight × chosen markup. Prices under $200 land on the closest ending in 3 or 7.</p>
     ${p.error ? `<div class="banner">Using saved material costs. Refresh failed: ${esc(p.error)}</div>` : ''}
-    <label>Find material</label>
-    <input id="price-search" autocomplete="off" placeholder="Amethyst, ammonite, labradorite..." value="${esc(p.search || '')}">
+    <label>Find current material</label>
+    <input id="price-search" type="search" autocomplete="off" placeholder="Type amethyst, ammonite, labradorite..." value="${esc(p.search || '')}">
     <div class="material-results" id="price-matches">${priceMatchesMarkup()}</div>
     <div id="price-selection">${priceSelectionMarkup()}</div>
     <label>Piece weight (KG)</label>
@@ -446,7 +450,7 @@ export function renderModal() {
       <button class="btn primary" style="width:100%" data-action="zettle-pick">Import Zettle report (.xlsx)</button>
       <input type="file" id="zettle-file" accept=".xlsx,.xls" hidden>
       <input type="file" id="backup-file" accept=".json,application/json" hidden>
-      <p class="sub" style="text-align:center">Glowstone Booth v0.5.3</p>`;
+      <p class="sub" style="text-align:center">Glowstone Booth v0.5.4</p>`;
   }
 
   if (ui.modal === 'insights') sheet = insightsMarkup();
