@@ -106,6 +106,11 @@ document.addEventListener('input', (e) => {
 });
 
 document.addEventListener('change', (e) => {
+  if (e.target.id === 'price-source' && ui.price) {
+    ui.price.source = e.target.value;
+    if (!ui.price.materials.some((m) => m.id === ui.price.selectedId && (!ui.price.source || m.sourceTrip === ui.price.source))) ui.price.selectedId = '';
+    renderPriceToolLive();
+  }
   if (e.target.id === 'zettle-file' && e.target.files?.[0]) { handleZettleFile(e.target.files[0]); e.target.value = ''; }
   if (e.target.id === 'zettle-day-file' && e.target.files?.[0]) { handleZettleFile(e.target.files[0], ui.dayEditId); e.target.value = ''; }
   if (e.target.id === 'backup-file' && e.target.files?.[0]) { handleBackupFile(e.target.files[0]); e.target.value = ''; }

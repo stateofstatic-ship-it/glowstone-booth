@@ -378,11 +378,13 @@ export async function loadInsights() {
 export async function loadPriceMaterials() {
   const cached = db.priceCatalog?.materials || [];
   const prior = ui.price || {};
+  const source = cached.some((m) => m.sourceTrip === prior.source) ? prior.source : '';
   ui.modal = 'priceTool';
   ui.price = {
     loading: !cached.length,
     materials: cached,
     search: prior.search || '',
+    source,
     selectedId: prior.selectedId || '',
     weight: prior.weight || '',
     multiplier: prior.multiplier || 12,
@@ -408,6 +410,7 @@ export async function loadPriceMaterials() {
     ui.price.materials = out.materials;
     ui.price.loading = false;
     ui.price.error = null;
+    if (!out.materials.some((m) => m.sourceTrip === ui.price.source)) ui.price.source = '';
     if (!out.materials.some((m) => m.id === ui.price.selectedId)) ui.price.selectedId = '';
     renderModal();
   } catch (err) {

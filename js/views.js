@@ -191,17 +191,31 @@ function selectedMaterial() {
   return ui.price?.materials?.find((m) => m.id === ui.price.selectedId) || null;
 }
 
+function sourceLabel(source) {
+  return source.replace('Uruguay 2025 Le Stage', 'Uruguay 2025 — Le Stage');
+}
+
+function priceSourceOptions() {
+  const sources = [...new Set(ui.price?.materials?.map((m) => m.sourceTrip).filter(Boolean))];
+  const rank = (source) => source.startsWith('Uruguay') ? 0 : source.startsWith('Tucson') ? 1 : source.startsWith('China') ? 2 : 3;
+  return sources.sort((a, b) => rank(a) - rank(b) || b.localeCompare(a, undefined, { numeric: true })).map((source) =>
+    `<option value="${esc(source)}" ${ui.price.source === source ? 'selected' : ''}>${esc(sourceLabel(source))}</option>`
+  ).join('');
+}
+
 export function priceMatchesMarkup() {
   const p = ui.price;
   const query = (p?.search || '').trim().toLowerCase();
   if (!p?.materials?.length) return '<p class="sub">No material costs are available yet.</p>';
+  const scoped = p.source ? p.materials.filter((m) => m.sourceTrip === p.source) : p.materials;
   const matches = (query
-    ? p.materials.filter((m) => [m.material, m.quality, m.vendor, m.sourceTrip].join(' ').toLowerCase().includes(query))
-    : p.materials).slice(0, 12);
+    ? scoped.filter((m) => [m.material, m.quality, m.vendor, m.sourceTrip].join(' ').toLowerCase().includes(query))
+    : scoped).slice(0, 12);
   if (!matches.length) return '<p class="sub">No matching material. Try a shorter word.</p>';
+  const scope = p.source ? sourceLabel(p.source) : 'current inventory';
   const hint = query
-    ? `${matches.length} matching material${matches.length === 1 ? '' : 's'}`
-    : `Browse ${matches.length} current-stock material${matches.length === 1 ? '' : 's'}, or type to narrow the list.`;
+    ? `${matches.length} matching material${matches.length === 1 ? '' : 's'} in ${scope}`
+    : `Browse ${matches.length} material${matches.length === 1 ? '' : 's'} from ${scope}, or type to narrow the list.`;
   return `<p class="sub">${hint}</p>${matches.map((m) => `
     <button class="material-match ${m.id === p.selectedId ? 'sel' : ''}" data-action="price-material" data-id="${esc(m.id)}">
       <span>${esc(m.material)}${m.quality ? ` · ${esc(m.quality)}` : ''}</span>
@@ -250,7 +264,12 @@ function priceToolMarkup() {
     <h3>Price Tool</h3>
     <p class="sub">Material cost × weight × chosen markup. Prices under $200 land on the closest ending in 3 or 7.</p>
     ${p.error ? `<div class="banner">Using saved material costs. Refresh failed: ${esc(p.error)}</div>` : ''}
-    <label>Find current material</label>
+    <label>Purchase source</label>
+    <select id="price-source">
+      <option value="">All current inventory</option>
+      ${priceSourceOptions()}
+    </select>
+    <label>Search within source</label>
     <input id="price-search" type="search" autocomplete="off" placeholder="Type amethyst, ammonite, labradorite..." value="${esc(p.search || '')}">
     <div class="material-results" id="price-matches">${priceMatchesMarkup()}</div>
     <div id="price-selection">${priceSelectionMarkup()}</div>
@@ -450,7 +469,7 @@ export function renderModal() {
       <button class="btn primary" style="width:100%" data-action="zettle-pick">Import Zettle report (.xlsx)</button>
       <input type="file" id="zettle-file" accept=".xlsx,.xls" hidden>
       <input type="file" id="backup-file" accept=".json,application/json" hidden>
-      <p class="sub" style="text-align:center">Glowstone Booth v0.5.4</p>`;
+      <p class="sub" style="text-align:center">Glowstone Booth v0.5.5</p>`;
   }
 
   if (ui.modal === 'insights') sheet = insightsMarkup();
