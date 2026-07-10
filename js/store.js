@@ -36,6 +36,7 @@ function defaults() {
     days: [],
     sales: [],
     zettle: {},
+    tombstones: [],
     priceCatalog: { materials: [], fetchedAt: null },
     settings: {
       chips: DEFAULT_CHIPS.slice(),
@@ -56,7 +57,7 @@ export function load() {
     // shallow-merge settings so new defaults appear for old installs
     const base = defaults();
     db.settings = Object.assign(base.settings, db.settings || {});
-    for (const k of ['events', 'days', 'sales']) if (!Array.isArray(db[k])) db[k] = [];
+    for (const k of ['events', 'days', 'sales', 'tombstones']) if (!Array.isArray(db[k])) db[k] = [];
     if (typeof db.zettle !== 'object' || db.zettle === null) db.zettle = {};
     if (typeof db.priceCatalog !== 'object' || db.priceCatalog === null || !Array.isArray(db.priceCatalog.materials)) db.priceCatalog = base.priceCatalog;
     if (JSON.stringify(db.settings.chips) === LEGACY_CHIPS) db.settings.chips = DEFAULT_CHIPS.slice();
