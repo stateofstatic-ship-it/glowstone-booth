@@ -2,7 +2,7 @@ import { load, save, replaceDb, uid, todayStr, VENUE_TYPES } from './store.js';
 import { parseZettleWorkbook } from './zettle.js';
 
 const db = load();
-const ui = { modal: null, forceHome: false, pad: null, notable: null, undoId: null, toastTimer: null, zimport: null, dayEditId: null, insights: null };
+const ui = { modal: null, forceHome: false, pad: null, notable: null, undoId: null, toastTimer: null, zimport: null, dayEditId: null, insights: null, price: null };
 
 /* ---------- helpers ---------- */
 
@@ -41,7 +41,8 @@ function homeView() {
       <div class="spacer"></div>
       <button class="btn small ghost" data-action="insights-open">Insights</button>
       <button class="btn small ghost" data-action="settings-open">⚙︎ Settings</button>
-    </div>`;
+    </div>
+    <button class="btn price-tool" data-action="price-open">Price Tool</button>`;
 
   if (day) {
     const ev = eventById(day.eventId);
@@ -204,6 +205,111 @@ function insightsMarkup() {
     ${recRows ? `<h2>BI Notes</h2><div class="card">${recRows}</div>` : ''}
     ${quality.length ? `<h2>Data Checks</h2><div class="card">${quality.slice(0, 5).map((q) => `<p class="sub">• ${esc(q)}</p>`).join('')}</div>` : ''}
     <button class="btn primary" style="width:100%" data-action="insights-refresh">Refresh insights</button>`;
+}
+
+/* ---------- weight-based pricing ---------- */
+
+const PRICE_MULTIPLIERS = [6, 8, 12, 15, 18, 20, 25, 30];
+
+function selectedMaterial() {
+  return ui.price?.materials?.find((m) => m.id === ui.price.selectedId) || null;
+}
+
+function priceMatchesMarkup() {
+  const p = ui.price;
+  const query = (p?.search || '').trim().toLowerCase();
+  if (!p?.materials?.length) return '<p class="sub">No material costs are available yet.</p>';
+  if (!query) return '<p class="sub">Search by material, quality, supplier, or trip.</p>';
+  const matches = p.materials.filter((m) => [m.material, m.quality, m.vendor, m.sourceTrip].join(' ').toLowerCase().includes(query)).slice(0, 12);
+  if (!matches.length) return '<p class="sub">No matching material. Try a shorter word.</p>';
+  return matches.map((m) => `
+    <button class="material-match ${m.id === p.selectedId ? 'sel' : ''}" data-action="price-material" data-id="${esc(m.id)}">
+      <span>${esc(m.material)}${m.quality ? ` · ${esc(m.quality)}` : ''}</span>
+      <small>${fmt(m.unitCost)}/kg · ${esc(m.sourceTrip)}</small>
+    </button>`).join('');
+}
+
+function tagPrice(raw) {
+  if (!(raw > 0)) return 0;
+  if (raw >= 200) return Math.round(raw);
+  const min = Math.max(3, Math.floor(raw) - 10);
+  const max = Math.ceil(raw) + 10;
+  let best = null;
+  for (let dollars = min; dollars <= max; dollars += 1) {
+    const ending = dollars % 10;
+    if (ending !== 3 && ending !== 7) continue;
+    const delta = Math.abs(dollars - raw);
+    if (best === null || delta < best.delta || (delta === best.delta && dollars > best.price)) best = { price: dollars, delta };
+  }
+  return best?.price || Math.round(raw);
+}
+
+function priceSelectionMarkup() {
+  const m = selectedMaterial();
+  if (!m) return '<div class="price-selected empty">Choose the closest material/quality from the search results.</div>';
+  return `<div class="price-selected">
+    <strong>${esc(m.material)}${m.quality ? ` · ${esc(m.quality)}` : ''}</strong>
+    <span>${fmt(m.unitCost)}/kg · ${esc(m.costBasis || 'recorded cost')} · ${esc(m.sourceTrip)}</span>
+  </div>`;
+}
+
+function priceResultMarkup() {
+  const p = ui.price;
+  const m = selectedMaterial();
+  const weight = Number(p?.weight) || 0;
+  const multiplier = Number(p?.multiplier) || 0;
+  if (!m || !(weight > 0) || !(multiplier > 0)) return '<p class="sub">Select a material and enter the piece weight to see a price.</p>';
+  const cost = m.unitCost * weight;
+  const raw = cost * multiplier;
+  const tag = tagPrice(raw);
+  const ending = raw < 200 ? 'Nearest 3/7 tag price' : 'Rounded whole-dollar price';
+  return `<div class="price-result-card">
+    <span>${ending}</span>
+    <strong>${fmt(tag)}</strong>
+    <p>${weight.toFixed(3)} kg × ${fmt(m.unitCost)}/kg = ${fmt(cost)} cost · ${multiplier}x = ${fmt(raw)}</p>
+    <button class="btn small primary" data-action="price-copy" data-price="${tag}">Copy ${fmt(tag)}</button>
+  </div>`;
+}
+
+function priceToolMarkup() {
+  const p = ui.price;
+  if (!p || p.loading) return `
+    <h3>Price Tool</h3>
+    <div class="card"><strong>Loading material costs...</strong><p class="sub">Refreshing the standardized purchase catalog from Google Sheets.</p></div>`;
+  if (p.error && !p.materials?.length) return `
+    <h3>Price Tool</h3>
+    <div class="card"><strong>Could not load material costs</strong><p class="sub">${esc(p.error)}</p></div>
+    <button class="btn primary" style="width:100%" data-action="price-refresh">Try again</button>`;
+  const stamp = db.priceCatalog?.fetchedAt ? new Date(db.priceCatalog.fetchedAt).toLocaleString() : '';
+  return `
+    <h3>Price Tool</h3>
+    <p class="sub">Material cost × weight × chosen markup. Prices under $200 land on the closest ending in 3 or 7.</p>
+    ${p.error ? `<div class="banner">Using saved material costs. Refresh failed: ${esc(p.error)}</div>` : ''}
+    <label>Find material</label>
+    <input id="price-search" autocomplete="off" placeholder="Amethyst, ammonite, labradorite..." value="${esc(p.search || '')}">
+    <div class="material-results" id="price-matches">${priceMatchesMarkup()}</div>
+    <div id="price-selection">${priceSelectionMarkup()}</div>
+    <label>Piece weight (KG)</label>
+    <input id="price-weight" type="number" inputmode="decimal" min="0" step="0.001" placeholder="0.250" value="${esc(p.weight || '')}">
+    <h2>Markup</h2>
+    <div class="multiplier-grid">
+      ${PRICE_MULTIPLIERS.map((x) => `<button class="multiplier ${p.multiplier === x ? 'sel' : ''}" data-action="price-multiplier" data-multiplier="${x}">${x}x</button>`).join('')}
+    </div>
+    <div id="price-result">${priceResultMarkup()}</div>
+    <button class="btn" style="width:100%;margin-top:12px" data-action="price-refresh">Refresh material costs</button>
+    ${stamp ? `<p class="sub" style="text-align:center">Saved on this phone: ${stamp}</p>` : ''}`;
+}
+
+function renderPriceToolLive() {
+  const matches = document.getElementById('price-matches');
+  const selection = document.getElementById('price-selection');
+  const result = document.getElementById('price-result');
+  if (matches) matches.innerHTML = priceMatchesMarkup();
+  if (selection) selection.innerHTML = priceSelectionMarkup();
+  if (result) result.innerHTML = priceResultMarkup();
+  document.querySelectorAll('[data-action="price-multiplier"]').forEach((el) => {
+    el.classList.toggle('sel', Number(el.dataset.multiplier) === ui.price?.multiplier);
+  });
 }
 
 function renderModal() {
@@ -376,11 +482,15 @@ function renderModal() {
       <button class="btn primary" style="width:100%" data-action="zettle-pick">Import Zettle report (.xlsx)</button>
       <input type="file" id="zettle-file" accept=".xlsx,.xls" hidden>
       <input type="file" id="backup-file" accept=".json,application/json" hidden>
-      <p class="sub" style="text-align:center">Glowstone Booth v0.4.5</p>`;
+      <p class="sub" style="text-align:center">Glowstone Booth v0.5.0</p>`;
   }
 
   if (ui.modal === 'insights') {
     sheet = insightsMarkup();
+  }
+
+  if (ui.modal === 'priceTool') {
+    sheet = priceToolMarkup();
   }
 
   if (ui.modal === 'zimport') {
@@ -827,6 +937,48 @@ async function loadInsights() {
   }
 }
 
+async function loadPriceMaterials() {
+  const cached = db.priceCatalog?.materials || [];
+  const prior = ui.price || {};
+  ui.modal = 'priceTool';
+  ui.price = {
+    loading: !cached.length,
+    materials: cached,
+    search: prior.search || '',
+    selectedId: prior.selectedId || '',
+    weight: prior.weight || '',
+    multiplier: prior.multiplier || 12,
+    error: null
+  };
+  render();
+  const { syncUrl, syncKey } = db.settings;
+  if (!syncUrl || !syncKey) {
+    ui.price.loading = false;
+    ui.price.error = 'Set the Sync URL and key in Settings first.';
+    renderModal();
+    return;
+  }
+  try {
+    const url = new URL(syncUrl);
+    url.searchParams.set('token', syncKey);
+    url.searchParams.set('action', 'materials');
+    const res = await fetch(url.toString(), { method: 'GET' });
+    const out = await res.json();
+    if (!out.ok || !Array.isArray(out.materials)) throw new Error(out.error || 'material list rejected');
+    db.priceCatalog = { materials: out.materials, fetchedAt: Date.now() };
+    save(db);
+    ui.price.materials = out.materials;
+    ui.price.loading = false;
+    ui.price.error = null;
+    if (!out.materials.some((m) => m.id === ui.price.selectedId)) ui.price.selectedId = '';
+    renderModal();
+  } catch (err) {
+    ui.price.loading = false;
+    ui.price.error = err.message;
+    renderModal();
+  }
+}
+
 /* ---------- exports ---------- */
 
 const csvCell = (v) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
@@ -874,6 +1026,19 @@ const handlers = {
   'go-day': () => { ui.forceHome = false; render(); },
   'insights-open': loadInsights,
   'insights-refresh': loadInsights,
+  'price-open': loadPriceMaterials,
+  'price-refresh': loadPriceMaterials,
+  'price-material': (d) => { ui.price.selectedId = d.id; renderPriceToolLive(); },
+  'price-multiplier': (d) => { ui.price.multiplier = Number(d.multiplier); renderPriceToolLive(); },
+  'price-copy': async (d) => {
+    const text = fmt(Number(d.price));
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
+      await navigator.clipboard.writeText(text);
+      showToast(`${text} copied`);
+    }
+    catch { showToast(`Suggested price: ${text}`); }
+  },
   'day-open': (d) => openDayEdit(d.id),
   'start-day': () => { ui.modal = db.events.length ? 'pickEvent' : 'newEvent'; render(); },
   'pick-event': (d) => startDayFor(d.id),
@@ -939,6 +1104,16 @@ document.addEventListener('submit', (e) => {
 document.addEventListener('input', (e) => {
   if (e.target.closest('#form-close')) updateCloseCalc();
   if (e.target.closest('#form-day-edit')) updateDayEditCalc();
+  if (e.target.id === 'price-search' && ui.price) {
+    ui.price.search = e.target.value;
+    const matches = document.getElementById('price-matches');
+    if (matches) matches.innerHTML = priceMatchesMarkup();
+  }
+  if (e.target.id === 'price-weight' && ui.price) {
+    ui.price.weight = e.target.value;
+    const result = document.getElementById('price-result');
+    if (result) result.innerHTML = priceResultMarkup();
+  }
 });
 
 document.addEventListener('change', (e) => {
@@ -957,7 +1132,7 @@ applyTheme();
 render();
 
 // test hooks (harmless in production; lets automated checks drive the import pipeline)
-window.__gs = { handleZettleFile, parseZettleWorkbook, ensureXLSX, syncNow, loadInsights };
+window.__gs = { handleZettleFile, parseZettleWorkbook, ensureXLSX, syncNow, loadInsights, loadPriceMaterials, tagPrice };
 
 const isDev = ['localhost', '127.0.0.1'].includes(location.hostname);
 if ('serviceWorker' in navigator && location.protocol !== 'file:' && !isDev) {

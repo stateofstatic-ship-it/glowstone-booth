@@ -1,4 +1,4 @@
-const VERSION = 'gs-booth-v0.4.6';
+const VERSION = 'gs-booth-v0.5.0';
 const ASSETS = [
   './',
   './index.html',
