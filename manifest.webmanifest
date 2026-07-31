@@ -1,7 +1,7 @@
 {
-  "name": "Glowstone Booth",
+  "name": "Glowstone Ops",
   "short_name": "Glowstone",
-  "description": "Booth sales logger for Glowstone Candles",
+  "description": "Sales, pricing, event planning, and task tracking for Glowstone",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

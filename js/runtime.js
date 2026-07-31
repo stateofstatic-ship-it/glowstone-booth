@@ -1,7 +1,26 @@
-import { load, save } from './store.js';
+import { load, save, todayStr } from './store.js';
 
 export const db = load();
-export const ui = { modal: null, forceHome: false, pad: null, notable: null, undoId: null, toastTimer: null, zimport: null, dayEditId: null, insights: null, price: null, suppressDayClick: false };
+export const ui = {
+  modal: null,
+  view: 'booth',
+  forceHome: false,
+  pad: null,
+  notable: null,
+  undoId: null,
+  toastTimer: null,
+  zimport: null,
+  syncPreview: null,
+  dayEditId: null,
+  insights: null,
+  price: null,
+  plannerMonth: todayStr().slice(0, 7),
+  plannerDate: todayStr(),
+  plannerFilter: 'all',
+  plannerEventId: null,
+  plannerTaskId: null,
+  suppressDayClick: false
+};
 
 export function persist() {
   try { save(db); return true; }
@@ -34,6 +53,6 @@ export const pct = (n) => Number(n || 0).toLocaleString(undefined, { maximumFrac
 export function showToast(msg, withUndo) {
   clearTimeout(ui.toastTimer);
   $('#toast-root').innerHTML = `
-    <div class="toast">${esc(msg)}${withUndo ? '<button data-action="undo">UNDO</button>' : ''}</div>`;
+    <div class="toast" role="status" aria-live="polite">${esc(msg)}${withUndo ? '<button data-action="undo">UNDO</button>' : ''}</div>`;
   ui.toastTimer = setTimeout(() => { $('#toast-root').innerHTML = ''; }, withUndo ? 6000 : 3000);
 }

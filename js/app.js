@@ -5,14 +5,40 @@ import { parseZettleWorkbook } from './zettle.js';
 import {
   logSale, startDayFor, padKey, updateCloseCalc, submitClose, updateDayEditCalc, submitDayEdit, submitEvent, submitSettings,
   applyTheme, handleZettleFile, applyZettleImport, handleBackupFile, deleteDayPrompt, openDayEdit,
-  syncNow, loadInsights, loadPriceMaterials, ensureXLSX, exportJson, exportSales, exportDays
+  syncNow, confirmSync, loadInsights, loadPriceMaterials, ensureXLSX, exportJson, exportSales, exportDays,
+  submitPlannerEvent, submitPlannerTask, addSuggestedPlannerEvent, togglePlannerTask,
+  deletePlannerTaskPrompt, deletePlannerEventPrompt, addApplicationChecklist, exportPlannerCalendar
 } from './actions.js';
 
 /* ---------- event wiring ---------- */
 
+function shiftPlannerMonth(amount) {
+  const [year, month] = ui.plannerMonth.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1 + amount, 1));
+  ui.plannerMonth = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+  ui.plannerDate = `${ui.plannerMonth}-01`;
+  render();
+}
+
 const handlers = {
-  'go-home': () => { ui.forceHome = true; render(); },
-  'go-day': () => { ui.forceHome = false; render(); },
+  'go-home': () => { ui.view = 'booth'; ui.forceHome = true; render(); },
+  'go-day': () => { ui.view = 'booth'; ui.forceHome = false; render(); },
+  'planner-open': () => { ui.view = 'planner'; render(); },
+  'planner-close': () => { ui.view = 'booth'; ui.forceHome = true; render(); },
+  'planner-month-prev': () => shiftPlannerMonth(-1),
+  'planner-month-next': () => shiftPlannerMonth(1),
+  'planner-date': (d) => { ui.plannerDate = d.date; render(); },
+  'planner-filter': (d) => { ui.plannerFilter = d.filter; render(); },
+  'planner-event-new': () => { ui.plannerEventId = null; ui.modal = 'plannerEvent'; render(); },
+  'planner-event-edit': (d) => { ui.plannerEventId = d.id; ui.modal = 'plannerEvent'; render(); },
+  'planner-event-delete': (d) => deletePlannerEventPrompt(d.id),
+  'planner-suggestion-add': (d) => addSuggestedPlannerEvent(d.id),
+  'planner-checklist': (d) => addApplicationChecklist(d.id),
+  'planner-task-new': () => { ui.plannerTaskId = null; ui.plannerEventId = null; ui.modal = 'plannerTask'; render(); },
+  'planner-task-edit': (d) => { ui.plannerTaskId = d.id; ui.modal = 'plannerTask'; render(); },
+  'planner-task-toggle': (d) => togglePlannerTask(d.id),
+  'planner-task-delete': (d) => deletePlannerTaskPrompt(d.id),
+  'planner-export': exportPlannerCalendar,
   'insights-open': loadInsights,
   'insights-refresh': loadInsights,
   'price-open': loadPriceMaterials,
@@ -73,6 +99,8 @@ const handlers = {
   'backup-pick': () => document.getElementById('backup-file')?.click(),
   'zimport-apply': applyZettleImport,
   'day-delete': () => deleteDayPrompt(ui.dayEditId),
+  'sync-cancel': () => { ui.syncPreview = null; ui.modal = 'settings'; render(); },
+  'sync-confirm': confirmSync,
   'sync-now': () => syncNow(false)
 };
 
@@ -88,6 +116,8 @@ document.addEventListener('submit', (e) => {
   if (e.target.id === 'form-event') submitEvent(e.target);
   if (e.target.id === 'form-day-edit') submitDayEdit(e.target);
   if (e.target.id === 'form-settings') submitSettings(e.target);
+  if (e.target.id === 'form-planner-event') submitPlannerEvent(e.target);
+  if (e.target.id === 'form-planner-task') submitPlannerTask(e.target);
 });
 
 document.addEventListener('input', (e) => {

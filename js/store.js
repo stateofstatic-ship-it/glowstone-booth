@@ -30,13 +30,17 @@ export const VENUE_TYPES = [
 
 function defaults() {
   return {
-    version: 1,
+    version: 2,
     activeDayId: null,
     events: [],
     days: [],
     sales: [],
     zettle: {},
     tombstones: [],
+    syncReviewRequired: false,
+    plannerEvents: [],
+    plannerTasks: [],
+    importCatalog: { version: null, generatedAt: null, dates: [], fetchedAt: null },
     priceCatalog: { materials: [], fetchedAt: null },
     settings: {
       chips: DEFAULT_CHIPS.slice(),
@@ -57,10 +61,17 @@ export function load() {
     // shallow-merge settings so new defaults appear for old installs
     const base = defaults();
     db.settings = Object.assign(base.settings, db.settings || {});
-    for (const k of ['events', 'days', 'sales', 'tombstones']) if (!Array.isArray(db[k])) db[k] = [];
+    for (const k of ['events', 'days', 'sales', 'tombstones', 'plannerEvents', 'plannerTasks']) if (!Array.isArray(db[k])) db[k] = [];
+    db.plannerEvents = db.plannerEvents.filter((item) => item && typeof item === 'object' && !Array.isArray(item));
+    db.plannerTasks = db.plannerTasks.filter((item) => item && typeof item === 'object' && !Array.isArray(item));
     if (typeof db.zettle !== 'object' || db.zettle === null) db.zettle = {};
+    db.syncReviewRequired = db.syncReviewRequired === true
+      || Object.values(db.zettle).some((item) => item && item.synced !== true);
+    if (typeof db.importCatalog !== 'object' || db.importCatalog === null || !Array.isArray(db.importCatalog.dates)) db.importCatalog = base.importCatalog;
+    else db.importCatalog = Object.assign(base.importCatalog, db.importCatalog);
     if (typeof db.priceCatalog !== 'object' || db.priceCatalog === null || !Array.isArray(db.priceCatalog.materials)) db.priceCatalog = base.priceCatalog;
     if (JSON.stringify(db.settings.chips) === LEGACY_CHIPS) db.settings.chips = DEFAULT_CHIPS.slice();
+    db.version = 2;
     return db;
   } catch {
     return defaults();
