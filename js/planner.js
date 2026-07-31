@@ -111,6 +111,8 @@ function normalizeFeedEvent(value, index, strict = false) {
   if (!id) return fail('id is required');
   const applicationDeadline = limitedText(value.applicationDeadline, 10);
   if (applicationDeadline && !validDate(applicationDeadline)) return fail('application deadline is invalid');
+  const logisticsChecked = limitedText(value.logisticsChecked, 10);
+  if (logisticsChecked && !validDate(logisticsChecked)) return fail('logistics checked date is invalid');
   return {
     id,
     sourceRow,
@@ -125,6 +127,11 @@ function normalizeFeedEvent(value, index, strict = false) {
     applicationDeadline,
     state: limitedText(value.state, 40),
     notes: limitedText(value.notes, 2000),
+    dailySchedule: limitedText(value.dailySchedule, 4000),
+    loadInDetails: limitedText(value.loadInDetails, 4000),
+    importantDetails: limitedText(value.importantDetails, 4000),
+    logisticsSourceUrl: limitedText(value.logisticsSourceUrl, 1000),
+    logisticsChecked,
     readOnly: true,
     sourceSheet: 'Events_Master'
   };
@@ -302,6 +309,11 @@ export function calendarEntries(db) {
       city: '',
       state: event.state,
       notes: event.notes,
+      dailySchedule: event.dailySchedule,
+      loadInDetails: event.loadInDetails,
+      importantDetails: event.importantDetails,
+      logisticsSourceUrl: event.logisticsSourceUrl,
+      logisticsChecked: event.logisticsChecked,
       sourceUrl: '',
       backendSchedule: true,
       sourceSheet: 'Events_Master',

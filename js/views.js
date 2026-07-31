@@ -186,7 +186,37 @@ function plannerTaskIsActive(task) {
   return !event || !['declined', 'skip', 'complete'].includes(event.status);
 }
 
-function plannerEntryLine(entry, today) {
+function plannerEntryDetails(entry) {
+  if (entry.type !== 'event') return '';
+  const fields = [
+    ['Show hours', entry.dailySchedule],
+    ['Load-in / load-out', entry.loadInDetails],
+    ['Important details', entry.importantDetails],
+    ['Notes', entry.notes]
+  ].filter(([, value]) => String(value || '').trim());
+  const sourceUrl = safeHref(entry.logisticsSourceUrl);
+  const checked = entry.logisticsChecked ? plannerDate(entry.logisticsChecked) : '';
+  if (!fields.length && !sourceUrl && !checked) {
+    return entry.backendSchedule
+      ? '<p class="agenda-logistics-missing">Event logistics have not been recorded yet. Check the official vendor packet or acceptance email.</p>'
+      : '';
+  }
+  return `
+    <div class="agenda-details">
+      ${fields.map(([label, value]) => `
+        <div class="agenda-detail">
+          <strong>${esc(label)}</strong>
+          <p>${esc(value)}</p>
+        </div>`).join('')}
+      ${(sourceUrl || checked) ? `
+        <div class="agenda-logistics-source">
+          ${sourceUrl ? `<a href="${sourceUrl}" target="_blank" rel="noopener">Official logistics source</a>` : ''}
+          ${checked ? `<span>Checked ${esc(checked)}</span>` : ''}
+        </div>` : ''}
+    </div>`;
+}
+
+function plannerEntryLine(entry, today, showDetails = false) {
   const overdue = entry.type !== 'event' && entry.date < today;
   const labels = {
     deadline: 'Application deadline',
@@ -205,6 +235,7 @@ function plannerEntryLine(entry, today) {
       <div>
         <strong>${esc(entry.title)}</strong>
         <span>${overdue ? 'Overdue, ' : ''}${dateLabel} · ${esc(labels[entry.type])}</span>
+        ${showDetails ? plannerEntryDetails(entry) : ''}
       </div>
     </div>`;
 }
@@ -448,7 +479,7 @@ function plannerView() {
       <div class="calendar-legend"><span><i class="task"></i>Task</span><span><i class="deadline"></i>Deadline</span><span><i class="reminder"></i>Reminder</span><span><i class="event"></i>Event</span></div>
       <div class="card selected-agenda">
         <strong>${plannerDate(ui.plannerDate)}</strong>
-        ${selectedEntries.length ? selectedEntries.map((entry) => plannerEntryLine(entry, today)).join('') : '<p class="empty-state">Nothing scheduled.</p>'}
+        ${selectedEntries.length ? selectedEntries.map((entry) => plannerEntryLine(entry, today, true)).join('') : '<p class="empty-state">Nothing scheduled.</p>'}
       </div>
     </section>
     ${showTasks ? `
@@ -951,7 +982,7 @@ export function renderModal() {
       <button class="btn primary" style="width:100%" data-action="zettle-pick">Import Zettle report (.xlsx)</button>
       <input type="file" id="zettle-file" accept=".xlsx,.xls" hidden>
       <input type="file" id="backup-file" accept=".json,application/json" hidden>
-      <p class="sub" style="text-align:center">Glowstone Ops v0.6.1</p>`;
+      <p class="sub" style="text-align:center">Glowstone Ops v0.6.2</p>`;
   }
 
   if (ui.modal === 'insights') sheet = insightsMarkup();
