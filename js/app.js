@@ -5,7 +5,7 @@ import { parseZettleWorkbook } from './zettle.js';
 import {
   logSale, startDayFor, padKey, updateCloseCalc, submitClose, updateDayEditCalc, submitDayEdit, submitEvent, submitSettings,
   applyTheme, handleZettleFile, applyZettleImport, handleBackupFile, deleteDayPrompt, openDayEdit,
-  syncNow, confirmSync, loadInsights, loadPriceMaterials, ensureXLSX, exportJson, exportSales, exportDays,
+  syncNow, confirmSync, loadInsights, loadPlannerFeed, loadPriceMaterials, ensureXLSX, exportJson, exportSales, exportDays,
   submitPlannerEvent, submitPlannerTask, addSuggestedPlannerEvent, togglePlannerTask,
   deletePlannerTaskPrompt, deletePlannerEventPrompt, addApplicationChecklist, exportPlannerCalendar
 } from './actions.js';
@@ -23,7 +23,7 @@ function shiftPlannerMonth(amount) {
 const handlers = {
   'go-home': () => { ui.view = 'booth'; ui.forceHome = true; render(); },
   'go-day': () => { ui.view = 'booth'; ui.forceHome = false; render(); },
-  'planner-open': () => { ui.view = 'planner'; render(); },
+  'planner-open': () => { ui.view = 'planner'; render(); loadPlannerFeed(); },
   'planner-close': () => { ui.view = 'booth'; ui.forceHome = true; render(); },
   'planner-month-prev': () => shiftPlannerMonth(-1),
   'planner-month-next': () => shiftPlannerMonth(1),
@@ -39,6 +39,7 @@ const handlers = {
   'planner-task-toggle': (d) => togglePlannerTask(d.id),
   'planner-task-delete': (d) => deletePlannerTaskPrompt(d.id),
   'planner-export': exportPlannerCalendar,
+  'planner-feed-refresh': () => loadPlannerFeed({ manual: true }),
   'insights-open': loadInsights,
   'insights-refresh': loadInsights,
   'price-open': loadPriceMaterials,
@@ -185,7 +186,7 @@ document.addEventListener('contextmenu', (e) => {
 applyTheme();
 render();
 
-window.__gs = { handleZettleFile, parseZettleWorkbook, ensureXLSX, syncNow, loadInsights, loadPriceMaterials, tagPrice };
+window.__gs = { handleZettleFile, parseZettleWorkbook, ensureXLSX, syncNow, loadInsights, loadPlannerFeed, loadPriceMaterials, tagPrice };
 
 const isDev = ['localhost', '127.0.0.1'].includes(location.hostname);
 if ('serviceWorker' in navigator && location.protocol !== 'file:' && !isDev) {

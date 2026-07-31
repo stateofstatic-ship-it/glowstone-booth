@@ -40,6 +40,7 @@ function defaults() {
     syncReviewRequired: false,
     plannerEvents: [],
     plannerTasks: [],
+    plannerFeed: { version: null, generatedAt: null, sourceSheet: 'Events_Master', events: [], issues: [], fetchedAt: null },
     importCatalog: { version: null, generatedAt: null, dates: [], fetchedAt: null },
     priceCatalog: { materials: [], fetchedAt: null },
     settings: {
@@ -64,6 +65,12 @@ export function load() {
     for (const k of ['events', 'days', 'sales', 'tombstones', 'plannerEvents', 'plannerTasks']) if (!Array.isArray(db[k])) db[k] = [];
     db.plannerEvents = db.plannerEvents.filter((item) => item && typeof item === 'object' && !Array.isArray(item));
     db.plannerTasks = db.plannerTasks.filter((item) => item && typeof item === 'object' && !Array.isArray(item));
+    if (typeof db.plannerFeed !== 'object' || db.plannerFeed === null ||
+      !Array.isArray(db.plannerFeed.events) || !Array.isArray(db.plannerFeed.issues)) {
+      db.plannerFeed = base.plannerFeed;
+    } else {
+      db.plannerFeed = Object.assign(base.plannerFeed, db.plannerFeed);
+    }
     if (typeof db.zettle !== 'object' || db.zettle === null) db.zettle = {};
     db.syncReviewRequired = db.syncReviewRequired === true
       || Object.values(db.zettle).some((item) => item && item.synced !== true);

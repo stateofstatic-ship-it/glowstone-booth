@@ -11,7 +11,13 @@ import {
   zettleRemapIssues,
   zettleTransactionMatches
 } from './zettle.js';
-import { buildIcs, calendarEntries, checklistTemplates } from './planner.js';
+import {
+  buildIcs,
+  calendarEntries,
+  checklistTemplates,
+  scheduledPlannerEvents,
+  validatePlannerFeedResponse
+} from './planner.js';
 import { SUGGESTED_EVENTS } from './event-suggestions.js';
 import { isSafeDryRunResult, syncPayloadSignature, syncResultParts } from './sync.js';
 
@@ -431,7 +437,8 @@ export function exportPlannerCalendar() {
   const activeIds = new Set(activeEvents.map((event) => event.id));
   const calendarDb = {
     plannerEvents: activeEvents,
-    plannerTasks: db.plannerTasks.filter((task) => !task.plannerEventId || activeIds.has(task.plannerEventId))
+    plannerTasks: db.plannerTasks.filter((task) => !task.plannerEventId || activeIds.has(task.plannerEventId)),
+    plannerFeed: db.plannerFeed
   };
   if (!calendarEntries(calendarDb).length) {
     showToast('Add a dated event or task first');
@@ -1031,6 +1038,70 @@ export async function loadInsights() {
   } catch (err) {
     ui.insights = { error: err.message };
     render();
+  }
+}
+
+let plannerFeedRequestInFlight = false;
+
+export async function loadPlannerFeed({ manual = false } = {}) {
+  if (plannerFeedRequestInFlight) {
+    if (manual) showToast('Events_Master is already refreshing');
+    return;
+  }
+  const { syncUrl, syncKey } = db.settings;
+  if (!syncUrl || !syncKey) {
+    ui.plannerFeedLoading = false;
+    ui.plannerFeedError = 'Set the Sync URL and key in Settings to load Events_Master.';
+    if (manual) showToast('Set the Sync URL and key in Settings first');
+    if (ui.view === 'planner') render();
+    return;
+  }
+
+  plannerFeedRequestInFlight = true;
+  ui.plannerFeedLoading = true;
+  ui.plannerFeedError = '';
+  if (ui.view === 'planner') render();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+  try {
+    const url = new URL(syncUrl);
+    url.searchParams.set('token', syncKey);
+    url.searchParams.set('action', 'events');
+    const res = await fetch(url.toString(), { method: 'GET', signal: controller.signal });
+    if (!res.ok) throw new Error(`server returned HTTP ${res.status}`);
+    const out = await res.json();
+    if (!out.ok) throw new Error(out.error || 'Events_Master request was rejected');
+    const validated = validatePlannerFeedResponse(out);
+    const previous = db.plannerFeed;
+    db.plannerFeed = { ...validated, fetchedAt: Date.now() };
+    if (!persist()) {
+      db.plannerFeed = previous;
+      throw new Error('the refreshed schedule could not be saved on this device');
+    }
+    ui.plannerFeedError = '';
+    if (manual) {
+      const count = scheduledPlannerEvents(db).length;
+      showToast(`Events_Master refreshed: ${count} scheduled event${count === 1 ? '' : 's'}`);
+    }
+  } catch (err) {
+    const hasSavedSchedule = Boolean(
+      db.plannerFeed?.fetchedAt ||
+      (Array.isArray(db.plannerFeed?.events) && db.plannerFeed.events.length)
+    );
+    const fallback = hasSavedSchedule
+      ? 'The saved schedule is still in use.'
+      : 'No saved schedule is available yet.';
+    ui.plannerFeedError = err.name === 'AbortError'
+      ? `Events_Master refresh timed out. ${fallback}`
+      : `Events_Master refresh failed: ${err.message}. ${fallback}`;
+    if (manual) showToast(hasSavedSchedule
+      ? 'Could not refresh Events_Master; saved schedule kept'
+      : 'Could not load Events_Master; try again online');
+  } finally {
+    clearTimeout(timeout);
+    plannerFeedRequestInFlight = false;
+    ui.plannerFeedLoading = false;
+    if (ui.view === 'planner') render();
   }
 }
 

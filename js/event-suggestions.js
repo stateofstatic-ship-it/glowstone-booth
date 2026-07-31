@@ -38,8 +38,8 @@ export const SUGGESTED_EVENTS = [
     priority: 'high',
     timingNote: 'The event dates are official. The Spring 2027 application cycle is not yet posted on the organizer site, so check August 1.',
     evidence: 'The strongest luxury-buyer hypothesis: a resort market, jury-selected artists, enthusiastic patrons, and a stated VIP experience.',
-    eligibilityRisk: 'high',
-    notes: 'Long-distance freight, lodging, commission, and natural-mineral eligibility must be confirmed before applying.'
+    eligibilityRisk: 'medium',
+    notes: "Long-distance freight, lodging, commission, and the show's category for Glowstone's raw-to-finished, artist-fabricated mineral work must be confirmed before applying."
   },
   {
     suggestionId: 'mill-valley-fall-arts-2027',
@@ -58,8 +58,8 @@ export const SUGGESTED_EVENTS = [
     priority: 'high',
     timingNote: 'The official artist application opens in February 2027; the exact deadline and festival dates are not posted.',
     evidence: 'The organizer explicitly describes affluent Bay Area buyers and an audience for unique, creative, high-end work.',
-    eligibilityRisk: 'high',
-    notes: 'Excellent brand match, but test two-day travel economics and confirm booth terrain and natural-mineral eligibility.'
+    eligibilityRisk: 'medium',
+    notes: "Excellent brand match, but test two-day travel economics and confirm booth terrain, category, and artist-made rules for Glowstone's raw-to-finished fabrication process."
   },
   {
     suggestionId: 'lake-oswego-art-in-park-2027',
@@ -78,8 +78,8 @@ export const SUGGESTED_EVENTS = [
     priority: 'high',
     timingNote: 'The 2027 call is not posted. The official calls page says most opportunities open in November or January, so start checking November 1.',
     evidence: 'Nearby affluent-market hypothesis based on location, plus a juried booth show for original work. Strong low-travel test for luxury home decoration.',
-    eligibilityRisk: 'high',
-    notes: 'Strongest nearby test for luxury home decoration with low travel risk.'
+    eligibilityRisk: 'unknown',
+    notes: "Strongest nearby test for luxury home decoration with low travel risk. Confirm the show's category and process-documentation rules."
   },
   {
     suggestionId: 'edmonds-arts-festival-2027',
@@ -100,8 +100,8 @@ export const SUGGESTED_EVENTS = [
     priority: 'high',
     timingNote: 'Artist booth applications are scheduled to open in late November 2026 and close in late January 2027.',
     evidence: 'Prestigious juried Pacific Northwest event with a destination setting and more than 160 booth artists.',
-    eligibilityRisk: 'high',
-    notes: 'Track the exact deadline when the booth application opens.'
+    eligibilityRisk: 'unknown',
+    notes: 'Track the exact deadline when the booth application opens, then confirm the category using raw-material, in-process, and completed-piece photos.'
   },
   {
     suggestionId: 'anacortes-arts-festival-2027',
@@ -120,8 +120,8 @@ export const SUGGESTED_EVENTS = [
     priority: 'medium',
     timingNote: 'The 2027 cycle is not posted. The 2026 application opened January 8 and closed March 5.',
     evidence: 'A BAM vendor reported five-figure results, and the organizer reported approximately $1.5 million in total 2025 booth-artisan sales across roughly 220 artists over three days. The organizer total is an eventwide average signal, not a Glowstone forecast.',
-    eligibilityRisk: 'high',
-    notes: 'The 2026 terms charged a $400 booth fee plus 10% of sales, offered no booth electricity, prohibited pets in the booth area, and warned that lodging fills early. Confirm artist-made eligibility and plan to demonstrate lighting from the battery system before applying.'
+    eligibilityRisk: 'unknown',
+    notes: 'The 2026 terms charged a $400 booth fee plus 10% of sales, offered no booth electricity, prohibited pets in the booth area, and warned that lodging fills early. Confirm the exact category and submit process photos showing raw material through grinding, coring, polishing, shaping, mounting, wiring/lighting, and finishing.'
   },
   {
     suggestionId: 'sun-valley-arts-crafts-2027',
@@ -141,7 +141,7 @@ export const SUGGESTED_EVENTS = [
     timingNote: 'The 2027 cycle is not posted. The 2026 application opened December 1 and closed March 20.',
     evidence: 'Affluent destination-market hypothesis with only 120 booth spaces, but the published eligibility rules are a serious obstacle.',
     eligibilityRisk: 'high',
-    notes: 'The 2026 rules prohibit tumbled stones and embellished, manufactured, or imported objects. Keep this prospect only if Glowstone can clearly qualify under an accepted original-work category; freight, lodging, and travel add further risk.'
+    notes: 'The 2026 rules prohibit tumbled stones and embellished, manufactured, or imported objects. Glowstone generally begins with raw mineral material and performs substantial artist fabrication, so request image-level classification of the exact pieces rather than treating raw-material origin as an automatic disqualification.'
   },
   {
     suggestionId: 'art-in-the-pearl-2027',
@@ -161,7 +161,7 @@ export const SUGGESTED_EVENTS = [
     priority: 'medium',
     timingNote: 'Applications open November 15, 2026 and close February 15, 2027.',
     evidence: 'Nationally juried fine art and craft event with no sales commission and no Oregon sales tax.',
-    eligibilityRisk: 'high',
-    notes: 'Original work must be designed and executed by the artist. Verify that Glowstone design and transformation work qualifies before comparing this against performance at other Portland events.'
+    eligibilityRisk: 'medium',
+    notes: "Original work must be designed and executed by the artist. Document Glowstone's raw-to-finished grinding, coring, polishing, shaping, mounting, wiring/lighting, and finishing, then confirm the appropriate category before comparing this event with other Portland results."
   }
 ];

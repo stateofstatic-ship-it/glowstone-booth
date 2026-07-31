@@ -2,7 +2,15 @@ import { db, ui, $, esc, fmt, fmtDate, fmtTime, eventById, dayById, activeDay, d
 import { PRICE_MULTIPLIERS, tagPrice } from './pricing.js';
 import { VENUE_TYPES, todayStr } from './store.js';
 import { updateCloseCalc, updateDayEditCalc } from './actions.js';
-import { PLANNER_STATUSES, TASK_KINDS, monthCells, calendarEntries, entriesOnDate, fitScore } from './planner.js';
+import {
+  GLOWSTONE_PROCESS_SUMMARY,
+  PLANNER_STATUSES,
+  TASK_KINDS,
+  monthCells,
+  calendarEntries,
+  entriesOnDate,
+  fitScore
+} from './planner.js';
 import { SUGGESTED_EVENTS } from './event-suggestions.js';
 import { syncResultParts } from './sync.js';
 
@@ -184,14 +192,19 @@ function plannerEntryLine(entry, today) {
     deadline: 'Application deadline',
     reminder: 'Research reminder',
     task: TASK_KIND_LABELS[entry.kind] || 'Task',
-    event: 'Event'
+    event: entry.backendSchedule
+      ? `${entry.rawStatus || entry.statusLabel || 'Scheduled'} in Events_Master`
+      : 'Event'
   };
+  const dateLabel = entry.type === 'event' && entry.endDate !== entry.date
+    ? `${plannerDate(entry.date)} to ${plannerDate(entry.endDate)}`
+    : plannerDate(entry.date);
   return `
     <div class="agenda-row ${overdue ? 'overdue' : ''}">
       <span class="entry-dot ${entry.type}"></span>
       <div>
         <strong>${esc(entry.title)}</strong>
-        <span>${overdue ? 'Overdue, ' : ''}${plannerDate(entry.date)} · ${labels[entry.type]}</span>
+        <span>${overdue ? 'Overdue, ' : ''}${dateLabel} · ${esc(labels[entry.type])}</span>
       </div>
     </div>`;
 }
@@ -345,6 +358,28 @@ function plannerView() {
        <p>${fmt(benchmark.perDay)} gross per day from private local history. Use it to compare venues, not as a revenue forecast.</p>`
     : `<strong>No local benchmark yet</strong>
        <p>Close an event's selling days and the strongest local result will appear here automatically.</p>`;
+  const sheetEntries = allEntries
+    .filter((entry) => entry.backendSchedule)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const upcomingSheetEntries = sheetEntries.filter((entry) => entry.endDate >= today);
+  const feedIssues = Array.isArray(db.plannerFeed?.issues) ? db.plannerFeed.issues : [];
+  const feedStamp = Number(db.plannerFeed?.fetchedAt)
+    ? new Date(db.plannerFeed.fetchedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
+    : '';
+  const feedState = ui.plannerFeedLoading
+    ? 'Refreshing the read-only Events_Master schedule...'
+    : ui.plannerFeedError
+      ? ui.plannerFeedError
+      : feedStamp
+        ? `Last refreshed ${feedStamp}.`
+        : 'Open this planner online to load Events_Master for the first time.';
+  const feedIssueMarkup = feedIssues.length
+    ? `<details class="planner-feed-issues">
+        <summary>${feedIssues.length} Events_Master row${feedIssues.length === 1 ? '' : 's'} need review</summary>
+        <ul>${feedIssues.slice(0, 6).map((issue) => `<li>${issue.sourceRow ? `Row ${issue.sourceRow}: ` : ''}${esc(issue.name ? `${issue.name}: ${issue.reason}` : issue.reason)}</li>`).join('')}</ul>
+        ${feedIssues.length > 6 ? `<p>Plus ${feedIssues.length - 6} more issue${feedIssues.length - 6 === 1 ? '' : 's'}.</p>` : ''}
+      </details>`
+    : '';
 
   return `
     <div class="topbar">
@@ -358,17 +393,31 @@ function plannerView() {
       <button class="btn" data-action="planner-task-new">+ Task</button>
     </div>
     <p class="export-note">In-app reminders appear whenever Glowstone Ops opens. The .ics file is a manual snapshot, usually imported through desktop Google Calendar, and later edits do not stay synced.</p>
-    <p class="export-note">Planner data is local to this browser and is not included in Google Sheets sync yet. It is included in the JSON backup. <button data-action="export-json">Back up now</button></p>
+    <p class="export-note">Application plans and tasks stay local to this browser. Scheduled dates are read-only from Events_Master and cached for offline viewing. Everything is included in the JSON backup. <button data-action="export-json">Back up now</button></p>
     <div class="card planner-benchmark">
       <span>Working benchmark</span>
       ${benchmarkMarkup}
     </div>
     <div class="banner planner-warning">
-      <strong>Eligibility gate:</strong> many juried shows only allow original, artist-made work. Verify how Glowstone's sourced minerals and design work fit each show's rules before applying.
+      <strong>Process and eligibility:</strong> ${esc(GLOWSTONE_PROCESS_SUMMARY)} Verify each show's rules and the exact category for the pieces submitted.
     </div>
     <div class="planner-filters">
       ${Object.entries(filterLabels).map(([value, label]) => `<button class="${ui.plannerFilter === value ? 'sel' : ''}" data-action="planner-filter" data-filter="${value}" aria-pressed="${ui.plannerFilter === value}">${label}</button>`).join('')}
     </div>
+    <section class="planner-feed">
+      <div class="section-head">
+        <div><h2>Scheduled from Events_Master</h2><span>${sheetEntries.length} scheduled, ${upcomingSheetEntries.length} upcoming</span></div>
+        <button class="btn small ghost" data-action="planner-feed-refresh" ${ui.plannerFeedLoading ? 'disabled' : ''}>${ui.plannerFeedLoading ? 'Refreshing...' : 'Refresh'}</button>
+      </div>
+      <p class="sub">Only Approved, Accepted, Confirmed, or Booked rows are treated as scheduled. Edit these dates and statuses in the Google Sheet.</p>
+      <p class="planner-feed-state">${esc(feedState)}</p>
+      <div class="card agenda-list">
+        ${upcomingSheetEntries.length
+          ? upcomingSheetEntries.map((entry) => plannerEntryLine(entry, today)).join('')
+          : '<p class="empty-state">No upcoming scheduled Events_Master dates are saved on this device.</p>'}
+      </div>
+      ${feedIssueMarkup}
+    </section>
     <section>
       <h2>Due and next 30 days</h2>
       <div class="card agenda-list">
@@ -902,7 +951,7 @@ export function renderModal() {
       <button class="btn primary" style="width:100%" data-action="zettle-pick">Import Zettle report (.xlsx)</button>
       <input type="file" id="zettle-file" accept=".xlsx,.xls" hidden>
       <input type="file" id="backup-file" accept=".json,application/json" hidden>
-      <p class="sub" style="text-align:center">Glowstone Ops v0.6.0</p>`;
+      <p class="sub" style="text-align:center">Glowstone Ops v0.6.1</p>`;
   }
 
   if (ui.modal === 'insights') sheet = insightsMarkup();

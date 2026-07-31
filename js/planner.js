@@ -12,8 +12,31 @@ export const PLANNER_STATUSES = [
 
 export const TASK_KINDS = ['application', 'event-prep', 'follow-up', 'general'];
 
+export const GLOWSTONE_PROCESS_SUMMARY = "Much of Glowstone's work starts as raw mineral material. The artist performs grinding, coring, polishing, shaping, mounting, wiring/lighting, and final finishing.";
+
 const DAY_MS = 86400000;
 const ENTRY_ORDER = { deadline: 0, reminder: 1, task: 2, event: 3 };
+const PLANNER_FEED_VERSION = 1;
+const FEED_STATUS_MAP = {
+  approved: 'booked',
+  accepted: 'booked',
+  confirmed: 'booked',
+  booked: 'booked',
+  applied: 'applied',
+  submitted: 'applied',
+  shortlist: 'shortlist',
+  shortlisted: 'shortlist',
+  waitlist: 'shortlist',
+  waitlisted: 'shortlist',
+  inquired: 'research',
+  inquiry: 'research',
+  research: 'research',
+  completed: 'complete',
+  complete: 'complete',
+  rejected: 'declined',
+  declined: 'declined',
+  denied: 'declined'
+};
 
 function validDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) return false;
@@ -37,6 +60,138 @@ function addDays(value, amount) {
 
 function eventName(event) {
   return String(event.name || event.title || 'Untitled event').trim() || 'Untitled event';
+}
+
+function limitedText(value, maxLength) {
+  return String(value == null ? '' : value).trim().slice(0, maxLength);
+}
+
+function normalizedEventName(value) {
+  const normalized = limitedText(value, 200)
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/\s+20\d{2}$/, '');
+  if ([
+    'bam',
+    'bam arts fair',
+    'bellevue arts fair',
+    'bellevue festival of the arts'
+  ].includes(normalized)) return 'bam arts fair';
+  return normalized;
+}
+
+function eventFingerprint(name, startDate) {
+  const normalized = normalizedEventName(name);
+  return normalized && validDate(startDate) ? `${normalized}|${startDate}` : '';
+}
+
+function feedStatus(value) {
+  return FEED_STATUS_MAP[limitedText(value, 40).toLowerCase()] || '';
+}
+
+function normalizeFeedEvent(value, index, strict = false) {
+  const fail = (message) => {
+    if (strict) throw new TypeError(`Invalid Events_Master event at index ${index}: ${message}`);
+    return null;
+  };
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return fail('event must be an object');
+  const name = limitedText(value.name || value.eventName, 200);
+  const eventStart = limitedText(value.startDate || value.eventStart, 10);
+  const eventEnd = limitedText(value.endDate || value.eventEnd || eventStart, 10);
+  const status = feedStatus(value.status || value.rawStatus);
+  if (!name) return fail('name is required');
+  if (!validDate(eventStart) || !validDate(eventEnd) || eventEnd < eventStart) return fail('date range is invalid');
+  if (!status) return fail('status is unsupported');
+  const sourceRow = Number(value.sourceRow);
+  if (!Number.isInteger(sourceRow) || sourceRow < 1) return fail('source row is invalid');
+  const id = limitedText(value.id, 240);
+  if (!id) return fail('id is required');
+  const applicationDeadline = limitedText(value.applicationDeadline, 10);
+  if (applicationDeadline && !validDate(applicationDeadline)) return fail('application deadline is invalid');
+  return {
+    id,
+    sourceRow,
+    name,
+    canonicalEvent: limitedText(value.canonicalEvent || name, 200),
+    eventType: limitedText(value.eventType || value.venueType, 100),
+    eventStart,
+    eventEnd,
+    status,
+    statusLabel: limitedText(value.rawStatus || value.statusLabel || status, 80),
+    rawStatus: limitedText(value.rawStatus || value.status, 80),
+    applicationDeadline,
+    state: limitedText(value.state, 40),
+    notes: limitedText(value.notes, 2000),
+    readOnly: true,
+    sourceSheet: 'Events_Master'
+  };
+}
+
+function normalizeFeedIssue(value) {
+  if (typeof value === 'string') return { sourceRow: null, name: '', reason: limitedText(value, 500) };
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const sourceRow = Number(value.sourceRow);
+  const reason = limitedText(value.reason || value.issue || value.message, 500);
+  if (!reason) return null;
+  return {
+    sourceRow: Number.isInteger(sourceRow) && sourceRow > 0 ? sourceRow : null,
+    name: limitedText(value.name || value.eventName, 200),
+    reason
+  };
+}
+
+export function validatePlannerFeedResponse(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || value.ok !== true) {
+    throw new TypeError('Events_Master response was rejected');
+  }
+  if (Number(value.plannerFeedVersion) !== PLANNER_FEED_VERSION) {
+    throw new TypeError('Events_Master feed version is unsupported');
+  }
+  if (value.sourceSheet !== 'Events_Master') {
+    throw new TypeError('Events_Master feed source is invalid');
+  }
+  const generatedAt = limitedText(value.generatedAt, 40);
+  if (!generatedAt || Number.isNaN(Date.parse(generatedAt))) {
+    throw new TypeError('Events_Master feed timestamp is invalid');
+  }
+  if (!Array.isArray(value.events)) {
+    throw new TypeError('Events_Master feed events are missing');
+  }
+  const seen = new Set();
+  const events = value.events.map((event, index) => normalizeFeedEvent(event, index, true))
+    .filter((event) => {
+      const key = `${event.id}|${eventFingerprint(event.canonicalEvent || event.name, event.eventStart)}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  const issues = Array.isArray(value.issues)
+    ? value.issues.map(normalizeFeedIssue).filter(Boolean)
+    : [];
+  return {
+    version: PLANNER_FEED_VERSION,
+    generatedAt,
+    sourceSheet: 'Events_Master',
+    events,
+    issues
+  };
+}
+
+export function scheduledPlannerEvents(db) {
+  const values = Array.isArray(db?.plannerFeed?.events) ? db.plannerFeed.events : [];
+  const seen = new Set();
+  return values
+    .map((event, index) => normalizeFeedEvent(event, index))
+    .filter((event) => event && event.status === 'booked')
+    .filter((event) => {
+      const key = eventFingerprint(event.canonicalEvent || event.name, event.eventStart);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 }
 
 function compareEntries(a, b) {
@@ -70,17 +225,23 @@ export function calendarEntries(db) {
   const tasks = Array.isArray(db?.plannerTasks)
     ? db.plannerTasks.filter((task) => task && typeof task === 'object' && !Array.isArray(task))
     : [];
+  const scheduledEvents = scheduledPlannerEvents(db);
+  const scheduledFingerprints = new Set(scheduledEvents.map((event) =>
+    eventFingerprint(event.canonicalEvent || event.name, event.eventStart)));
+  const scheduledIds = new Set(scheduledEvents.map((event) => event.id));
   const statusByEventId = new Map(events.map((event) => [String(event.id || ''), event.status || 'research']));
   const eventById = new Map(events.map((event) => [String(event.id || ''), event]));
 
   events.forEach((event, index) => {
     const sourceId = String(event.id || `event-${index}`);
     const name = eventName(event);
-    const status = event.status || 'research';
-    if (['declined', 'skip', 'complete'].includes(status)) return;
     const rawStart = validDate(event.eventStart) ? event.eventStart : '';
+    const linkedSchedule = scheduledIds.has(String(event.eventsMasterId || '')) ||
+      scheduledFingerprints.has(eventFingerprint(name, rawStart));
+    const status = linkedSchedule ? 'booked' : event.status || 'research';
+    if (['declined', 'skip', 'complete'].includes(status)) return;
     const rawEnd = validDate(event.eventEnd) ? event.eventEnd : '';
-    if (rawStart || rawEnd) {
+    if ((rawStart || rawEnd) && !linkedSchedule) {
       const date = rawStart || rawEnd;
       const endDate = rawEnd && rawEnd >= date ? rawEnd : date;
       entries.push({
@@ -126,6 +287,28 @@ export function calendarEntries(db) {
         sourceUrl: event.applicationUrl || event.sourceUrl || ''
       });
     }
+  });
+
+  scheduledEvents.forEach((event) => {
+    entries.push({
+      id: `events-master:${event.id}`,
+      sourceId: event.id,
+      plannerEventId: null,
+      type: 'event',
+      title: event.name,
+      date: event.eventStart,
+      endDate: event.eventEnd,
+      status: event.status,
+      city: '',
+      state: event.state,
+      notes: event.notes,
+      sourceUrl: '',
+      backendSchedule: true,
+      sourceSheet: 'Events_Master',
+      rawStatus: event.rawStatus,
+      statusLabel: event.statusLabel,
+      sourceRow: event.sourceRow
+    });
   });
 
   tasks.forEach((task, index) => {
@@ -207,14 +390,14 @@ export function checklistTemplates(event, today) {
   }
   if (deadline) {
     return [
-      item('eligibility', 'Verify artist-made eligibility, fees, and product category', reminder || addDays(anchor, -120), 'application', 'high'),
+      item('eligibility', 'Prepare process evidence and confirm artist-made category', reminder || addDays(anchor, -120), 'application', 'high'),
       item('photos', 'Prepare luxury-focused product, booth photos, and artist statement', addDays(anchor, -60), 'application'),
       item('submit', 'Submit application', addDays(anchor, -14), 'application', 'high'),
       item('receipt', 'Confirm application receipt', anchor, 'application')
     ];
   }
   return [
-    item('eligibility', 'Check official application dates, fees, and artist-made eligibility', anchor, 'application', 'high'),
+    item('eligibility', 'Check application dates, fees, category, and process-documentation rules', anchor, 'application', 'high'),
     item('decision', 'Decide whether to apply or pass', addDays(anchor, 7), 'application')
   ];
 }

@@ -48,6 +48,7 @@ h2 { font-size: 1.05rem; margin: 18px 0 8px; font-weight: 700; color: var(--ink-
 
 .topbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
 .topbar .spacer { flex: 1; }
+.topbar h1, .topbar .btn { white-space: nowrap; }
 .price-tool { width: 100%; margin: 0 0 12px; }
 
 .btn {
@@ -284,6 +285,17 @@ form input, form select, form textarea {
 .empty-state { color: var(--ink-soft); font-size: 0.9rem; margin: 8px 0; }
 .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .section-head span { color: var(--ink-soft); font-size: 0.82rem; }
+.planner-feed .section-head { align-items: center; }
+.planner-feed .section-head h2 { margin-bottom: 2px; }
+.planner-feed .section-head span { display: block; }
+.planner-feed-state { color: var(--ink-soft); font-size: 0.78rem; line-height: 1.4; margin: 8px 2px; }
+.planner-feed-issues {
+  margin-top: 10px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px;
+  background: var(--card); color: var(--ink-soft); font-size: 0.8rem; line-height: 1.4;
+}
+.planner-feed-issues summary { color: var(--ink); font-weight: 800; cursor: pointer; }
+.planner-feed-issues ul { margin: 8px 0 0; padding-left: 19px; }
+.planner-feed-issues p { margin: 8px 0 0; }
 .planner-task {
   display: grid; grid-template-columns: 38px minmax(0, 1fr) 10px; align-items: center;
   gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line);

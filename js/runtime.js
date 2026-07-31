@@ -19,6 +19,8 @@ export const ui = {
   plannerFilter: 'all',
   plannerEventId: null,
   plannerTaskId: null,
+  plannerFeedLoading: false,
+  plannerFeedError: '',
   suppressDayClick: false
 };
 
