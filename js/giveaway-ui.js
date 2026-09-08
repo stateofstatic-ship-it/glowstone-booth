@@ -1,6 +1,6 @@
 import { db, ui, esc, activeDay, eventById, persist, showToast, fmtTime } from './runtime.js';
 import { render } from './views.js';
-import { createRound, selectWinner, markOutcome, publicName, eligibleEntries, pacificDay } from './giveaway-core.js';
+import { CLAIM_WINDOW_MS, createRound, selectWinner, markOutcome, publicName, eligibleEntries, pacificDay } from './giveaway-core.js';
 import { loadTemporary, saveTemporary, updateTemporary } from './giveaway-store.js';
 import { participantSales, parseQrCsv, validateQrCounts, anonymousRound } from './giveaway-metrics.js';
 
@@ -370,7 +370,7 @@ function setupMarkup(record) {
     '<label>Crystal prize description<input name="prizeDescription" required maxlength="160" value="' + esc(c.prizeDescription || '') + '" placeholder="Describe the actual specimen"></label>' +
     '<label>Approximate prize value ($)<input name="prizeValue" required type="number" min="0.01" max="10000" step="0.01" value="' + esc(c.prizeValue || '') + '"></label>' +
     '<label>Announced daily draw times (24-hour, comma separated)<input name="drawTimes" required value="' + esc((c.drawTimes || ['12:00', '14:00', '16:00']).join(', ')) + '"></label>' +
-    '<p class="sub">One free entry per adult per day. Must be present; 60 seconds to approach. Prize winners sit out the rest of the day. Announce extra drawings before their cutoffs.</p>' +
+    '<p class="sub">One free entry per adult per day. Must be present; 10 seconds to approach. Prize winners sit out the rest of the day. Announce extra drawings before their cutoffs.</p>' +
     '<button class="btn primary" type="submit"' + (giveawayUI.busy ? ' disabled' : '') + '>Save entry form</button></form>';
 }
 function connectionMarkup() {
@@ -393,7 +393,7 @@ export function giveawayMarkup() {
   const claimedIds = state?.rounds.flatMap(r => r.results.filter(result => result.outcome === 'claimed').map(result => result.entryId)) || [];
   const pool = state ? eligibleEntries(state.entries, { date: day.date, now: privateNow(), claimedIds }) : [];
   const selectedNow = round?.status === 'selected' && selected, canSpin = round?.status === 'ready';
-  const countdown = selectedNow ? Math.max(0, Math.ceil((60000 - (privateNow() - round.selectedAt)) / 1000)) : 0;
+  const countdown = selectedNow ? Math.max(0, Math.ceil((CLAIM_WINDOW_MS - (privateNow() - round.selectedAt)) / 1000)) : 0;
   const audience = giveawayUI.audience;
   let html = '<section class="giveaway-screen' + (audience ? ' gw-audience' : '') + '"><div class="topbar"><button class="btn small ghost" data-action="giveaways-close">← Ops</button><div class="spacer"></div><button class="btn small ghost" data-action="giveaway-mute">' + (giveawayUI.muted ? 'Sound off' : 'Sound on') + '</button><button class="btn small ghost" data-action="giveaway-audience">' + (audience ? 'Controls' : 'Audience view') + '</button></div>' +
     '<div class="gw-heading"><p class="gw-eyebrow">GLOWSTONE · STUDIO GIVEAWAY</p><h1>A little natural wonder.</h1><p>' + esc(day ? eventById(day.eventId)?.name : 'Start a selling day in Ops to begin.') + '</p></div>';
@@ -404,7 +404,7 @@ export function giveawayMarkup() {
   if (!audience) html += '<div class="gw-sync-line" role="status"><span class="gw-dot' + (record.accepting ? ' open' : '') + '"></span>' +
     (giveawayUI.busy ? 'Working…' : record.accepting ? 'Entry form open' : 'Entry form closed or not configured') +
     '<span>' + (record.lastSync ? 'Last complete refresh ' + esc(fmtTime(record.lastSync)) : 'No completed refresh yet') + '</span></div>';
-  html += '<div class="gw-stage"><div class="gw-pointer" aria-hidden="true"></div><canvas id="giveaway-wheel" width="720" height="720" aria-label="Giveaway wheel. Every eligible entry has an equal chance."></canvas><div class="gw-hub"><span>' + (giveawayUI.spinning ? 'Good luck' : selectedNow || round?.status === 'claimed' ? 'Selected' : pool.length) + '</span><small>' + (selectedNow || round?.status === 'claimed' ? 'GLOWSTONE' : 'eligible entries') + '</small></div></div>';
+  html += '<div class="gw-stage"><div class="gw-pointer" aria-hidden="true"></div><canvas id="giveaway-wheel" width="720" height="720" aria-label="Giveaway wheel. Every eligible entry has an equal chance."></canvas><div class="gw-hub" aria-hidden="true"></div></div>';
   html += '<div class="gw-result" aria-live="polite"><p class="gw-eyebrow">' + (giveawayUI.spinning ? 'THE WHEEL IS TURNING' : selectedNow ? 'IS OUR WINNER HERE?' : round?.status === 'claimed' ? 'A NEW HOME FOR THIS SPECIMEN' : 'CRYSTALS, COMMUNITY, A LITTLE LUCK') + '</p><h2>' +
     (giveawayUI.spinning ? 'Who will it be?' : selectedNow || round?.status === 'claimed' ? esc(publicName(selected)) : round?.status === 'exhausted' ? 'Everyone in this pool has been called.' : !pool.length ? 'No eligible entries yet.' : 'The next find could be yours.') + '</h2>' +
     (selectedNow ? '<p id="giveaway-countdown">' + (countdown ? countdown + ' seconds to approach' : 'Claim window elapsed') + '</p>' : '') + '</div>';
@@ -447,19 +447,19 @@ export function paintWheel(rotation, entries) {
     rotation = selected >= 0 ? Math.PI * 2 - (selected + 0.5) / pool.length * Math.PI * 2 : 0;
   }
   ctx.clearRect(0, 0, 720, 720); ctx.save(); ctx.translate(cx, cx); ctx.rotate(rotation - Math.PI / 2);
-  const colors = ['#384e43', '#d2a85a', '#654478', '#ecdcc2', '#456b68', '#9d7360'];
+  const colors = ['#ed3028', '#0a9fe3', '#fff36b', '#ff8b00', '#cde681', '#ffc46e', '#c7b719'];
   for (let i = 0; i < count; i++) {
     const start = i * Math.PI * 2 / count, end = (i + 1) * Math.PI * 2 / count;
     ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, radius, start, end); ctx.closePath(); ctx.fillStyle = colors[i % colors.length]; ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 2; ctx.stroke();
-    ctx.save(); ctx.rotate((start + end) / 2); ctx.translate(radius - 24, 0); ctx.textAlign = 'right'; ctx.fillStyle = [1, 3].includes(i % colors.length) ? '#29251f' : '#fff9e9';
+    ctx.strokeStyle = 'rgba(25,27,29,.2)'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.save(); ctx.rotate((start + end) / 2); ctx.translate(radius - 48, 0); ctx.textAlign = 'right'; ctx.fillStyle = '#101112';
     const angle = ((rotation - Math.PI / 2 + (start + end) / 2) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
     if (angle > Math.PI / 2 && angle < Math.PI * 1.5) { ctx.rotate(Math.PI); ctx.textAlign = 'left'; }
     ctx.font = '600 ' + (count <= 8 ? 34 : count > 24 ? 13 : 24) + 'px system-ui';
     const label = pool.length <= 60 && pool.length > 0 ? publicName(pool[i]).slice(0, 17) : '✦';
-    ctx.fillText(label, 0, 6); ctx.restore();
+    ctx.fillText(label, 0, 6, radius - 48 - cx * .4 - 10); ctx.restore();
   }
-  ctx.restore(); ctx.beginPath(); ctx.arc(cx, cx, radius + 4, 0, Math.PI * 2); ctx.strokeStyle = '#dfc899'; ctx.lineWidth = 12; ctx.stroke();
+  ctx.restore(); ctx.beginPath(); ctx.arc(cx, cx, radius + 4, 0, Math.PI * 2); ctx.strokeStyle = '#25272b'; ctx.lineWidth = 12; ctx.stroke();
 }
 export function initializeGiveaways() {
   if (initialized) return;
@@ -480,7 +480,7 @@ export function initializeGiveaways() {
       if (ui.view === 'giveaways') {
         const countdown = document.getElementById('giveaway-countdown'), round = currentRound();
         if (countdown && round?.status === 'selected') {
-          const left = Math.max(0, Math.ceil((60000 - (privateNow() - round.selectedAt)) / 1000));
+          const left = Math.max(0, Math.ceil((CLAIM_WINDOW_MS - (privateNow() - round.selectedAt)) / 1000));
           countdown.textContent = left ? left + ' seconds to approach' : 'Claim window elapsed';
           const absent = document.querySelector('[data-action="giveaway-absent"]'); if (absent) absent.disabled = left > 0;
         }

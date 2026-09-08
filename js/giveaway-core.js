@@ -1,4 +1,5 @@
 const TTL = 24 * 60 * 60 * 1000;
+export const CLAIM_WINDOW_MS = 10000;
 const stamp = value => typeof value === 'number' ? value : Date.parse(value);
 export function normalizeEmail(value) { return String(value ?? '').trim().toLowerCase(); }
 export function pacificDay(value) {
@@ -44,7 +45,7 @@ export function selectWinner(round, entries, { now = Date.now(), claimedIds = []
 export function markOutcome(round, outcome, now = Date.now()) {
   if (round.status !== 'selected' || !round.selectedId) throw new Error('Select a winner first.');
   if (!['claimed', 'absent'].includes(outcome)) throw new Error('Invalid winner outcome.');
-  if (outcome === 'absent' && stamp(now) - stamp(round.selectedAt) < 60000) throw new Error('Wait 60 seconds before marking a no-show.');
+  if (outcome === 'absent' && stamp(now) - stamp(round.selectedAt) < CLAIM_WINDOW_MS) throw new Error('Wait 10 seconds before marking a no-show.');
   return { ...round, status: outcome === 'claimed' ? 'claimed' : 'ready', selectedId: outcome === 'claimed' ? round.selectedId : null, selectedAt: outcome === 'claimed' ? round.selectedAt : null, absentIds: outcome === 'absent' ? [...round.absentIds, round.selectedId] : [...round.absentIds], results: [...round.results, { entryId: round.selectedId, outcome, at: now }] };
 }
 export function publicName(entry) {

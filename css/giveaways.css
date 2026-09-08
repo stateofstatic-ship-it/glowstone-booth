@@ -8,9 +8,8 @@
 .gw-dot{width:7px;height:7px;border-radius:50%;background:#a8a29e}.gw-dot.open{background:#56816b}
 .gw-stage{position:relative;width:min(100%,420px);margin:16px auto 20px;filter:drop-shadow(0 15px 15px #33271726)}
 #giveaway-wheel{display:block;width:100%;height:auto;aspect-ratio:1}
-.gw-pointer{position:absolute;top:-6px;left:calc(50% - 13px);width:26px;height:32px;background:#362b25;clip-path:polygon(0 0,100% 0,50% 100%);z-index:2}
-.gw-hub{position:absolute;inset:34%;border-radius:50%;background:#faf4e8;border:6px solid #ddc79d;display:flex;align-items:center;justify-content:center;flex-direction:column;color:#342b25;box-shadow:0 3px 14px #251e2238}
-.gw-hub span{font-family:Georgia,serif;font-size:clamp(20px,7vw,36px)}.gw-hub small{font-size:8px;letter-spacing:1px;text-transform:uppercase}
+.gw-pointer{position:absolute;top:-6px;left:calc(50% - 13px);width:26px;height:32px;background:#202124;clip-path:polygon(0 0,100% 0,50% 100%);z-index:2}
+.gw-hub{position:absolute;inset:30%;border-radius:50%;background:#00ad83;border:3px solid #009775;box-shadow:0 3px 12px #17252626}
 .gw-result{text-align:center;min-height:105px;padding:0 8px 18px}.gw-result h2{font-family:Georgia,serif;font-weight:400;font-size:clamp(25px,7vw,36px);margin:8px 0}.gw-result>p:last-child{font-size:14px}
 .giveaway-screen>.btn.primary{display:block;width:100%;min-height:56px;font-size:20px}
 .gw-actions{margin-top:22px}.gw-actions .row2{margin-top:10px}
