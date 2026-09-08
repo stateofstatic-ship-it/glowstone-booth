@@ -7,6 +7,12 @@ import { participantSales, parseQrCsv, validateQrCounts, anonymousRound } from '
 export const giveawayUI = { temp: null, busy: false, error: '', spinning: false, muted: false, setup: false, audience: false, booted: false, checkIdentity: false };
 let audioContext, visualFrame, animationResolve, initialized = false, refreshInFlight = false, lastSweep = 0, nextRefreshAttempt = 0;
 const HOURS_24 = 86400000;
+const CONNECTION_DRAFT_KEY = 'glowstone_giveaway_connection_draft_v1';
+let connectionDraft = null;
+try {
+  const saved = JSON.parse(globalThis.sessionStorage?.getItem(CONNECTION_DRAFT_KEY) || 'null');
+  if (saved && typeof saved.url === 'string' && typeof saved.key === 'string') connectionDraft = { url: saved.url, key: saved.key };
+} catch { /* A memory draft still survives redraws when tab storage is unavailable. */ }
 const now = () => Date.now();
 const gid = () => globalThis.crypto.randomUUID();
 function giveawayDay() {
@@ -284,6 +290,16 @@ export function markGiveawayCardSale() {
 function undoCard() {
   try { const day = activeDay(); if (!day) return; patchDay({ cardSales: (dayRecord(day.id).cardSales || []).slice(0, -1) }, day.id); render(); } catch (error) { notifyError(error); }
 }
+function captureConnectionDraft(form = document.getElementById('giveaway-connection')) {
+  if (form?.id !== 'giveaway-connection') return;
+  const draft = { url: form.giveawayUrl.value, key: form.giveawayKey.value };
+  if (!connectionDraft && draft.url === (db.settings.giveawayUrl || '') && !draft.key) return;
+  connectionDraft = draft;
+  try { globalThis.sessionStorage?.setItem(CONNECTION_DRAFT_KEY, JSON.stringify(draft)); } catch { /* Keep the in-memory draft. */ }
+}
+export function handleGiveawayInput(target) {
+  if (target.form?.id === 'giveaway-connection') captureConnectionDraft(target.form);
+}
 async function importQr(file) {
   try { patchDay({ qr: parseQrCsv(await file.text(), dayPayload().date) }); showToast('Daily QRCG totals saved.'); render(); } catch (error) { notifyError(error); }
 }
@@ -299,6 +315,8 @@ export function handleGiveawaySubmit(form) {
       const previous = db.settings;
       db.settings = { ...previous, giveawayUrl, giveawayKey };
       if (!persist()) { db.settings = previous; throw new Error('The connection was not saved. Free some storage and retry.'); }
+      connectionDraft = null;
+      try { globalThis.sessionStorage?.removeItem(CONNECTION_DRAFT_KEY); } catch { /* Saving the connection must not depend on tab storage. */ }
       giveawayUI.error = '';
       showToast('Connection saved. Save the entry form to test Google.'); render();
     } catch (error) { notifyError(error); }
@@ -357,9 +375,9 @@ function setupMarkup(record) {
 }
 function connectionMarkup() {
   const configured = db.settings.giveawayUrl && db.settings.giveawayKey;
-  return '<details class="card"' + (configured ? '' : ' open') + '><summary>Google giveaway connection</summary><form id="giveaway-connection" class="gw-form">' +
-    '<p class="sub">Connect the new giveaway backend once on this phone.</p><label>Deployment URL<input name="giveawayUrl" type="url" required autocomplete="off" placeholder="https://script.google.com/macros/s/…/exec" value="' + esc(db.settings.giveawayUrl || '') + '"></label>' +
-    '<label>Giveaway key<input name="giveawayKey" type="password" autocomplete="off" placeholder="' + (configured ? 'Saved key — leave blank to keep' : 'Key from Google setup') + '"' + (configured ? '' : ' required') + '></label>' +
+  return '<details class="card"' + (configured && !connectionDraft ? '' : ' open') + '><summary>Google giveaway connection</summary><form id="giveaway-connection" class="gw-form">' +
+    '<p class="sub">Connect the new giveaway backend once on this phone.</p><label>Deployment URL<input name="giveawayUrl" type="url" required autocomplete="off" placeholder="https://script.google.com/macros/s/…/exec" value="' + esc(connectionDraft?.url ?? db.settings.giveawayUrl ?? '') + '"></label>' +
+    '<label>Giveaway key<input name="giveawayKey" type="password" autocomplete="off" value="' + esc(connectionDraft?.key || '') + '" placeholder="' + (configured ? 'Saved key — leave blank to keep' : 'Key from Google setup') + '"' + (configured ? '' : ' required') + '></label>' +
     '<button class="btn" type="submit"' + (giveawayUI.busy ? ' disabled' : '') + '>Save connection</button></form></details>';
 }
 function surveyMarkup(survey = {}) {
@@ -446,6 +464,7 @@ export function paintWheel(rotation, entries) {
 export function initializeGiveaways() {
   if (initialized) return;
   initialized = true;
+  if (connectionDraft) { ui.view = 'giveaways'; render(); }
   loadPrivate().catch(error => { giveawayUI.error = error.message; });
   const timer = setInterval(async () => {
     if (document.visibilityState === 'hidden' || giveawayUI.spinning || giveawayUI.busy) return;
@@ -471,9 +490,9 @@ export function initializeGiveaways() {
   }, 1000);
   timer.unref?.();
   document.addEventListener('visibilitychange', async () => {
-    if (document.visibilityState === 'hidden') { giveawayUI.checkIdentity = false; document.querySelector('.gw-private')?.remove(); return; }
+    if (document.visibilityState === 'hidden') { captureConnectionDraft(); giveawayUI.checkIdentity = false; document.querySelector('.gw-private')?.remove(); return; }
     try { await loadPrivate(); if (ui.view === 'giveaways') { render(); paintWheel(); } } catch (error) { notifyError(error); }
     if (giveawayDay() && dayRecord().formUrl && !dayRecord().finishedAt) refreshGiveaways();
   });
-  globalThis.addEventListener?.('pagehide', () => { cancelAnimationFrame(visualFrame); animationResolve?.(); giveawayUI.checkIdentity = false; });
+  globalThis.addEventListener?.('pagehide', () => { captureConnectionDraft(); cancelAnimationFrame(visualFrame); animationResolve?.(); giveawayUI.checkIdentity = false; });
 }

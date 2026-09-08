@@ -2,7 +2,7 @@ import { db, ui, $, fmt, persist, showToast } from './runtime.js';
 import { render, renderModal, priceMatchesMarkup, priceResultMarkup, renderPriceToolLive } from './views.js';
 import { tagPrice } from './pricing.js';
 import { parseZettleWorkbook } from './zettle.js';
-import { giveawayHandlers, handleGiveawaySubmit, handleGiveawayChange, initializeGiveaways } from './giveaway-ui.js';
+import { giveawayHandlers, handleGiveawaySubmit, handleGiveawayChange, handleGiveawayInput, initializeGiveaways } from './giveaway-ui.js';
 import {
   logSale, startDayFor, padKey, updateCloseCalc, submitClose, updateDayEditCalc, submitDayEdit, submitEvent, submitSettings,
   applyTheme, handleZettleFile, applyZettleImport, handleBackupFile, deleteDayPrompt, openDayEdit,
@@ -125,6 +125,7 @@ document.addEventListener('submit', (e) => {
 });
 
 document.addEventListener('input', (e) => {
+  handleGiveawayInput(e.target);
   if (e.target.closest('#form-close')) updateCloseCalc();
   if (e.target.closest('#form-day-edit')) updateDayEditCalc();
   if (e.target.id === 'price-search' && ui.price) {
