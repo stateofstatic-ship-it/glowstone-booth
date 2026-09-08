@@ -8,6 +8,7 @@ export const ui = {
   pad: null,
   notable: null,
   undoId: null,
+  giveawayNextSale: false,
   toastTimer: null,
   zimport: null,
   syncPreview: null,

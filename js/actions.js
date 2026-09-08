@@ -28,9 +28,10 @@ export function applyTheme() {
 export function logSale(amount, payType, category = null) {
   const day = activeDay();
   if (!day || !(amount > 0)) return;
-  const sale = { id: uid(), dayId: day.id, ts: Date.now(), amount, payType, category };
+  const sale = { id: uid(), dayId: day.id, ts: Date.now(), amount, payType, category, giveawayParticipant: payType === 'cash' && ui.giveawayNextSale === true };
   db.sales.push(sale);
-  persist();
+  if (!persist()) { db.sales.pop(); return; }
+  ui.giveawayNextSale = false;
   navigator.vibrate?.(25);
   ui.undoId = sale.id;
   ui.modal = null;
@@ -45,6 +46,7 @@ export function startDayFor(eventId) {
   const day = { id: uid(), eventId, date: todayStr(), closedAt: null };
   db.days.push(day);
   db.activeDayId = day.id;
+  ui.giveawayNextSale = false;
   persist();
   ui.modal = null;
   ui.forceHome = false;

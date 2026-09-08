@@ -1,8 +1,13 @@
-const VERSION = 'gs-ops-v0.6.2';
+const VERSION = 'gs-ops-v0.7.0';
 const ASSETS = [
   './',
   './index.html',
   './css/app.css',
+  './css/giveaways.css',
+  './js/giveaway-core.js',
+  './js/giveaway-store.js',
+  './js/giveaway-metrics.js',
+  './js/giveaway-ui.js',
   './js/app.js',
   './js/runtime.js',
   './js/views.js',

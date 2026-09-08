@@ -1,0 +1,37 @@
+.giveaway-screen{max-width:620px;margin:auto;padding-bottom:40px}
+.gw-heading{text-align:center;padding:24px 8px 10px}
+.gw-heading h1{font-family:Georgia,serif;font-weight:400;font-size:clamp(28px,7vw,40px);letter-spacing:-1px;margin:9px 0}
+.gw-heading p:not(.gw-eyebrow){font-size:14px;opacity:.75}
+.gw-eyebrow{font-size:10px;letter-spacing:2px;font-weight:700;text-transform:uppercase}
+.gw-sync-line{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:12px;opacity:.85;padding:10px 0}
+.gw-sync-line>span:last-child{margin-left:auto}
+.gw-dot{width:7px;height:7px;border-radius:50%;background:#a8a29e}.gw-dot.open{background:#56816b}
+.gw-stage{position:relative;width:min(100%,420px);margin:16px auto 20px;filter:drop-shadow(0 15px 15px #33271726)}
+#giveaway-wheel{display:block;width:100%;height:auto;aspect-ratio:1}
+.gw-pointer{position:absolute;top:-6px;left:calc(50% - 13px);width:26px;height:32px;background:#362b25;clip-path:polygon(0 0,100% 0,50% 100%);z-index:2}
+.gw-hub{position:absolute;inset:34%;border-radius:50%;background:#faf4e8;border:6px solid #ddc79d;display:flex;align-items:center;justify-content:center;flex-direction:column;color:#342b25;box-shadow:0 3px 14px #251e2238}
+.gw-hub span{font-family:Georgia,serif;font-size:clamp(20px,7vw,36px)}.gw-hub small{font-size:8px;letter-spacing:1px;text-transform:uppercase}
+.gw-result{text-align:center;min-height:105px;padding:0 8px 18px}.gw-result h2{font-family:Georgia,serif;font-weight:400;font-size:clamp(25px,7vw,36px);margin:8px 0}.gw-result>p:last-child{font-size:14px}
+.giveaway-screen>.btn.primary{display:block;width:100%;min-height:56px;font-size:20px}
+.gw-actions{margin-top:22px}.gw-actions .row2{margin-top:10px}
+.gw-form{display:grid;gap:15px}.gw-form label{display:grid;gap:5px;font-size:13px;font-weight:600}
+.gw-form input{box-sizing:border-box;width:100%;min-height:45px;max-width:100%}
+.gw-day-select{display:grid;gap:6px;font-size:12px;opacity:.85}.gw-day-select select{width:100%;min-height:44px}
+.gw-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:16px 0}
+.gw-metric{padding:14px 10px;border:1px solid #a994722f;border-radius:12px;display:flex;flex-direction:column;gap:5px}
+.gw-metric strong{font-size:25px;font-weight:600}.gw-metric span{font-size:12px;opacity:.75}
+.gw-error{overflow-wrap:anywhere}.gw-private{padding:12px;border:1px dashed #b45309;border-radius:8px;overflow-wrap:anywhere}
+.gw-survey-row{display:flex;justify-content:space-between;gap:10px;padding:6px 0;font-size:13px}
+.gw-file-label{display:grid;gap:8px;font-size:13px;margin-top:16px}.gw-file-label input{max-width:100%}
+.gw-form-link{font-weight:600;color:inherit;overflow-wrap:anywhere}
+.giveaway-sale-tools{border:1px solid #a9947240;border-radius:12px;padding:12px;margin:12px 0 18px}
+.giveaway-checkbox{display:flex;align-items:center;gap:8px;font-size:13px;flex-wrap:wrap;margin-bottom:12px}
+.giveaway-checkbox input{width:20px;height:20px;flex:0 0 auto}.giveaway-checkbox .sub{flex-basis:100%;padding-left:28px}
+.giveaway-sale-tools .btn{white-space:normal;font-size:12px;min-height:42px}
+.gw-audience{min-height:90dvh}.gw-audience .gw-heading{padding-top:24px}
+.gw-audience .gw-stage{width:min(100%,480px)}.gw-audience .gw-result h2{font-size:clamp(32px,9vw,52px)}
+.giveaway-audience-mode #toast-root{display:none}
+.giveaway-screen .topbar .btn{min-height:44px}
+.giveaway-screen .btn:disabled{opacity:.45;cursor:not-allowed}.giveaway-screen details>summary{cursor:pointer;font-weight:600}
+@media(min-width:600px){.gw-metrics{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(prefers-reduced-motion:reduce){.gw-stage{filter:none}}

@@ -2,6 +2,7 @@ import { db, ui, $, fmt, persist, showToast } from './runtime.js';
 import { render, renderModal, priceMatchesMarkup, priceResultMarkup, renderPriceToolLive } from './views.js';
 import { tagPrice } from './pricing.js';
 import { parseZettleWorkbook } from './zettle.js';
+import { giveawayHandlers, handleGiveawaySubmit, handleGiveawayChange, initializeGiveaways } from './giveaway-ui.js';
 import {
   logSale, startDayFor, padKey, updateCloseCalc, submitClose, updateDayEditCalc, submitDayEdit, submitEvent, submitSettings,
   applyTheme, handleZettleFile, applyZettleImport, handleBackupFile, deleteDayPrompt, openDayEdit,
@@ -21,6 +22,7 @@ function shiftPlannerMonth(amount) {
 }
 
 const handlers = {
+  ...giveawayHandlers,
   'go-home': () => { ui.view = 'booth'; ui.forceHome = true; render(); },
   'go-day': () => { ui.view = 'booth'; ui.forceHome = false; render(); },
   'planner-open': () => { ui.view = 'planner'; render(); loadPlannerFeed(); },
@@ -113,6 +115,7 @@ document.addEventListener('click', (e) => {
 
 document.addEventListener('submit', (e) => {
   e.preventDefault();
+  if (handleGiveawaySubmit(e.target)) return;
   if (e.target.id === 'form-close') submitClose(e.target);
   if (e.target.id === 'form-event') submitEvent(e.target);
   if (e.target.id === 'form-day-edit') submitDayEdit(e.target);
@@ -137,6 +140,7 @@ document.addEventListener('input', (e) => {
 });
 
 document.addEventListener('change', (e) => {
+  handleGiveawayChange(e.target);
   if (e.target.id === 'price-source' && ui.price) {
     ui.price.source = e.target.value;
     if (!ui.price.materials.some((m) => m.id === ui.price.selectedId && (!ui.price.source || m.sourceTrip === ui.price.source))) ui.price.selectedId = '';
@@ -185,6 +189,7 @@ document.addEventListener('contextmenu', (e) => {
 
 applyTheme();
 render();
+initializeGiveaways();
 
 window.__gs = { handleZettleFile, parseZettleWorkbook, ensureXLSX, syncNow, loadInsights, loadPlannerFeed, loadPriceMaterials, tagPrice };
 

@@ -35,6 +35,7 @@ function defaults() {
     events: [],
     days: [],
     sales: [],
+    giveaways: {},
     zettle: {},
     tombstones: [],
     syncReviewRequired: false,
@@ -49,7 +50,9 @@ function defaults() {
       defaultFloat: 200,
       dark: false,
       syncUrl: '',
-      syncKey: ''
+      syncKey: '',
+      giveawayUrl: '',
+      giveawayKey: ''
     }
   };
 }
@@ -61,6 +64,7 @@ export function load() {
     const db = JSON.parse(raw);
     // shallow-merge settings so new defaults appear for old installs
     const base = defaults();
+    if (!db.giveaways || typeof db.giveaways !== 'object' || Array.isArray(db.giveaways)) db.giveaways = {};
     db.settings = Object.assign(base.settings, db.settings || {});
     for (const k of ['events', 'days', 'sales', 'tombstones', 'plannerEvents', 'plannerTasks']) if (!Array.isArray(db[k])) db[k] = [];
     db.plannerEvents = db.plannerEvents.filter((item) => item && typeof item === 'object' && !Array.isArray(item));

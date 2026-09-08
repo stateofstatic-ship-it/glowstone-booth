@@ -13,10 +13,15 @@ import {
 } from './planner.js';
 import { SUGGESTED_EVENTS } from './event-suggestions.js';
 import { syncResultParts } from './sync.js';
+import { giveawayMarkup, giveawaySaleControls, paintWheel } from './giveaway-ui.js';
 
 export function render() {
   const day = activeDay();
-  if (ui.view === 'planner') $('#view').innerHTML = plannerView();
+  if (ui.view === 'giveaways') {
+    $('#view').innerHTML = giveawayMarkup();
+    queueMicrotask(paintWheel);
+  }
+  else if (ui.view === 'planner') $('#view').innerHTML = plannerView();
   else $('#view').innerHTML = day && !ui.forceHome ? dayView(day) : homeView();
   renderModal();
 }
@@ -39,6 +44,7 @@ function homeView() {
     </div>
     <div class="row2 home-tools">
       <button class="btn" data-action="price-open">Price Tool</button>
+      <button class="btn" data-action="giveaways-open">Giveaways</button>
       <button class="btn" data-action="planner-open">Planner${plannerCount ? ` <span class="count-badge">${plannerCount}</span>` : ''}</button>
     </div>`;
 
@@ -116,6 +122,7 @@ function dayView(day) {
       <button class="btn" data-action="pad-open">$ Custom</button>
       <button class="btn" data-action="notable-open">★ Notable</button>
     </div>
+    ${giveawaySaleControls(day)}
     ${sales.length ? `<h2>Recent · tap to remove</h2><div class="card">${recent}</div>` : ''}
   `;
 }
