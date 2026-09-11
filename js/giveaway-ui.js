@@ -298,11 +298,57 @@ function captureConnectionDraft(form = document.getElementById('giveaway-connect
   try { globalThis.sessionStorage?.setItem(CONNECTION_DRAFT_KEY, JSON.stringify(draft)); } catch { /* Keep the in-memory draft. */ }
 }
 export function handleGiveawayInput(target) {
+  if (target.closest?.('#giveaway-discount')) discountDraft();
   if (target.form?.id === 'giveaway-connection') captureConnectionDraft(target.form);
 }
 async function importQr(file) {
   try { patchDay({ qr: parseQrCsv(await file.text(), dayPayload().date) }); showToast('Daily QRCG totals saved.'); render(); } catch (error) { notifyError(error); }
 }
+function discountDraft(form = document.getElementById('giveaway-discount')) {
+  if (!form) return;
+  const prior = giveawayUI.discount || {};
+  const next = { code: form.code.value.trim().toUpperCase(), payType: form.payType.value, subtotal: form.subtotal.value, dayId: giveawayDay()?.id };
+  const changed = ['code', 'payType', 'subtotal', 'dayId'].some(key => next[key] !== prior[key]);
+  giveawayUI.discount = { ...prior, ...next, ...(changed ? { checked: false, completed: false, saleRef: null } : {}) };
+}
+async function checkDiscount(form) {
+  discountDraft(form);
+  await guarded(async () => {
+    if (navigator.onLine === false) throw new Error('Code verification needs internet. Keep logging sales offline; no code has been redeemed.');
+    const draft = giveawayUI.discount;
+    if (!/^[A-Z2-9]{4}$/.test(draft.code) || !/^\d+(?:\.\d{1,2})?$/.test(draft.subtotal) || Number(draft.subtotal) <= 0) throw new Error('Enter the four-character code and a positive pre-tax subtotal (up to two decimals).');
+    const out = await request('discountCheck', { code: draft.code, payType: draft.payType });
+    if (!out.discount || out.discount.code !== draft.code || out.discount.percent !== (draft.payType === 'cash' ? 15 : 5)) throw new Error('The discount response failed validation. Nothing was redeemed.');
+    giveawayUI.discount = { ...draft, checked: true, saleRef: draft.saleRef || gid() };
+  });
+}
+async function redeemDiscount() {
+  await guarded(async () => {
+    const draft = giveawayUI.discount;
+    if (!draft?.checked || draft.dayId !== giveawayDay()?.id || draft.completed) throw new Error('Check the code for this day first.');
+    if (navigator.onLine === false) throw new Error('Redemption needs internet. Keep logging sales offline; retry the same code after reconnecting.');
+    const out = await request('discountRedeem', { code: draft.code, payType: draft.payType, subtotalCents: Math.round(Number(draft.subtotal) * 100), saleRef: draft.saleRef });
+    if (!out.redeemed || out.discount?.saleRef !== draft.saleRef) throw new Error('Redemption was not confirmed. Retry without changing the code.');
+    giveawayUI.discount = { ...draft, checked: false, completed: true };
+    showToast('Discount redemption saved. Record the sale normally; no revenue was added here.');
+  });
+}
+function discountMarkup() {
+  const draft = giveawayUI.discount?.dayId === giveawayDay()?.id ? giveawayUI.discount : {};
+  const cents = Math.round(Number(draft.subtotal || 0) * 100), percent = draft.payType === 'cash' ? 15 : 5;
+  const total = (cents - Math.round(cents * percent / 100)) / 100;
+  const counts = giveawayUI.mailCounts;
+  return '<div class="card"><h2>Subscriber discount</h2><p class="sub">Check the emailed code before checkout. It expires at midnight on the opt-in date (Pacific time). This tracks discounts only, not revenue.</p>' +
+    '<form id="giveaway-discount" class="gw-form"><label>Four-character code<input name="code" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" required value="' + esc(draft.code || '') + '"></label>' +
+    '<label>Payment<select name="payType"><option value="card">Card: 5% off</option><option value="cash"' + (draft.payType === 'cash' ? ' selected' : '') + '>Cash: 15% total off</option></select></label>' +
+    '<label>Subtotal before discount and tax ($)<input name="subtotal" inputmode="decimal" type="number" min="0.01" max="1000000" step="0.01" required value="' + esc(draft.subtotal || '') + '"></label>' +
+    '<button class="btn" type="submit"' + (giveawayUI.busy ? ' disabled' : '') + '>Check code</button></form>' +
+    (draft.checked ? '<p><strong>' + percent + '% total discount. Collect $' + total.toFixed(2) + ' before tax.</strong></p><p class="sub">Only redeem after payment completes. If confirmation fails, retry without changing these details.</p>' + button('giveaway-discount-redeem', 'Sale completed: redeem code', true) : '') +
+    (draft.completed ? '<p class="banner">Redemption saved. Log the actual cash or card sale normally. This action did not add sales revenue.</p>' : '') +
+    '<p class="sub">No connection? Continue normal offline sales logging. A code cannot be verified or redeemed while offline.</p>' + button('giveaway-mail-status', 'Check email queue') +
+    (counts ? '<p class="sub">Email accepted for sending: ' + (counts.sent || 0) + '. Queued: ' + (counts.queued || 0) + '. Failed: ' + (counts.failed || 0) + '. Uncertain: ' + (counts.sending || 0) + '. Expired unsent: ' + (counts.expired || 0) + '. Redeemed: ' + (counts.redeemed || 0) + '. Sending is not proof of delivery. Failed or uncertain sends need owner review.</p>' : '') + '</div>';
+}
+
 export function handleGiveawaySubmit(form) {
   if (form.id === 'giveaway-connection') {
     if (giveawayUI.busy || giveawayUI.spinning) return true;
@@ -322,6 +368,7 @@ export function handleGiveawaySubmit(form) {
     } catch (error) { notifyError(error); }
     return true;
   }
+  if (form.id === 'giveaway-discount') { checkDiscount(form); return true; }
   if (form.id === 'giveaway-setup') { setupGiveaway(form); return true; }
   if (form.id === 'giveaway-qr') {
     try { patchDay({ qr: validateQrCounts(form.total.value, form.unique.value, dayPayload().date) }); showToast('Daily scan totals saved.'); render(); } catch (error) { notifyError(error); }
@@ -330,12 +377,15 @@ export function handleGiveawaySubmit(form) {
   return false;
 }
 export function handleGiveawayChange(target) {
+  if (target.closest?.('#giveaway-discount')) { discountDraft(); render(); }
   if (target.id === 'giveaway-day-select') { ui.giveawayDayId = target.value; giveawayUI.checkIdentity = false; giveawayUI.error = ''; render(); paintWheel(); }
   if (target.id === 'giveaway-next-sale') ui.giveawayNextSale = target.checked;
   if (target.id === 'giveaway-qr-file' && target.files?.[0]) { importQr(target.files[0]); target.value = ''; }
 }
 export const giveawayHandlers = {
   'giveaways-open': openGiveaways,
+  'giveaway-discount-redeem': redeemDiscount,
+  'giveaway-mail-status': () => guarded(async () => { const out = await request('mailStatus'); giveawayUI.mailCounts = out.mailCounts; }),
   'giveaways-close': () => { giveawayUI.audience = false; document.body.classList.remove('giveaway-audience-mode'); ui.view = 'booth'; render(); },
   'giveaway-setup-open': () => { giveawayUI.setup = !giveawayUI.setup; render(); },
   'giveaway-open': openEntries,
@@ -418,6 +468,7 @@ export function giveawayMarkup() {
     (record.formUrl ? '<p><a class="gw-form-link" href="' + esc(safeFormUrl(record.formUrl)) + '" target="_blank" rel="noopener noreferrer">Open entry form ↗</a></p><p class="sub">Set your QRCG dynamic code destination to this form. Customers need internet to submit.</p>' : '') +
     '<button class="btn small ghost" data-action="giveaway-setup-open">' + (record.formUrl ? 'Edit form and drawing times' : 'Set up Google entry form') + '</button></div>';
   if (giveawayUI.setup || !record.formUrl) html += setupMarkup(record);
+  if (record.formUrl) html += discountMarkup();
   const m = record.serverMetrics || {}, sales = participantSales(db, day.id), summaries = record.rounds || [];
   html += '<div class="card"><h2>Today’s signal</h2><div class="gw-metrics">' +
     metric('Form submissions', m.submissions) + metric('Eligible registrations', m.eligible) + metric('Duplicate entries', m.duplicates) + metric('Email opt-ins', m.optIns) +
