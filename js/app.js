@@ -203,6 +203,8 @@ const isDev = ['localhost', '127.0.0.1'].includes(location.hostname);
 if ('serviceWorker' in navigator && location.protocol !== 'file:' && !isDev) {
   const hadController = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) location.reload(); });
-  navigator.serviceWorker.register('sw.js').then((reg) => reg.update()).catch(() => {});
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
+    .then((reg) => reg.update())
+    .catch(() => { showToast('App update check failed. Your saved data is unchanged; try again when online.'); });
 }
 navigator.storage?.persist?.();

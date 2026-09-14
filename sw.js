@@ -1,4 +1,4 @@
-const VERSION = 'gs-ops-v0.7.5';
+const VERSION = 'gs-ops-v0.7.6';
 const ASSETS = [
   './',
   './index.html',
@@ -25,27 +25,28 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(VERSION)
+    .then((c) => c.addAll(ASSETS.map((url) => new Request(url, { cache: 'reload' }))))
+    .then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k.startsWith('gs-ops-') && k !== VERSION).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
 
 self.addEventListener('fetch', (e) => {
-  if (e.request.method !== 'GET' || !e.request.url.startsWith(self.location.origin)) return;
+  if (e.request.method !== 'GET' || !e.request.url.startsWith(self.registration.scope)) return;
   e.respondWith(
-    caches.match(e.request).then((hit) => {
+    caches.open(VERSION).then(async (cache) => {
+      const hit = await cache.match(e.request);
       if (hit) return hit;
-      return fetch(e.request).then((res) => {
-        const clone = res.clone();
-        caches.open(VERSION).then((c) => c.put(e.request, clone));
-        return res;
-      });
+      const res = await fetch(e.request);
+      if (res.ok) e.waitUntil(cache.put(e.request, res.clone()).catch(() => {}));
+      return res;
     })
   );
 });
