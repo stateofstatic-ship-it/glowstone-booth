@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Glowstone connection check</title>
+  <style>
+    :root { color-scheme: light dark; font: 17px system-ui, sans-serif; }
+    body { max-width: 40rem; margin: 0 auto; padding: 24px 18px; }
+    h1 { font-size: 1.5rem; } p { line-height: 1.5; }
+    button { font: inherit; padding: 14px 18px; border-radius: 12px; margin: 6px 6px 6px 0; cursor: pointer; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: 16px; border: 1px solid #888; border-radius: 12px; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <h1>Glowstone connection check</h1>
+  <p>Use the same phone browser as your installed Glowstone app. This check does not change your saved connection or send sales records. It never displays your key or sales totals.</p>
+  <button id="check">Check Insights</button>
+  <button id="copy" disabled>Copy safe result</button>
+  <pre id="result" role="status">Ready. Each request has a 15-second limit.</pre>
+  <p><a href="./">Back to Glowstone Ops</a></p>
+  <script type="module">
+    function classifyResponse(status, data) {
+      const insights = data?.ok === true && data.metrics !== null && typeof data.metrics === 'object'
+        && !Array.isArray(data.metrics)
+        && ['events', 'yoy', 'tax', 'dataQuality', 'recommendations'].every((key) => Array.isArray(data[key]));
+      const type = insights ? 'insights_data'
+        : data?.ok === false ? 'server_rejected'
+        : data?.ok === true && ('days' in data || 'txns' in data) ? 'sync_acknowledgement'
+        : data?.ok === true && 'service' in data ? 'service_info'
+        : 'unrecognized_response';
+      const marker = Number.isInteger(data?.insightsVersion) && data.insightsVersion >= 0 && data.insightsVersion <= 100
+        ? data.insightsVersion : data?.insightsVersion === undefined ? 'absent' : 'unrecognized';
+      return { http: status, type, insightsVersion: marker, authenticationRejected: data?.error === 'auth' };
+    }
+
+    async function checkRequest(endpoint, token, method) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 15000);
+      try {
+        const url = new URL(endpoint);
+        url.search = '';
+        url.hash = '';
+        const options = { method, cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer', signal: controller.signal };
+        if (method === 'POST') {
+          options.headers = { 'Content-Type': 'text/plain;charset=utf-8' };
+          options.body = JSON.stringify({ token, action: 'insights' });
+        } else {
+          url.searchParams.set('token', token);
+          url.searchParams.set('action', 'insights');
+        }
+        const response = await fetch(url, options);
+        let data;
+        try { data = await response.json(); }
+        catch (error) {
+          if (error.name === 'AbortError') throw error;
+          return { http: response.status, type: 'non_json_response' };
+        }
+        return classifyResponse(response.status, data);
+      } catch (error) {
+        return { type: error.name === 'AbortError' ? 'timed_out' : 'network_error' };
+      } finally { clearTimeout(timer); }
+    }
+
+    const result = document.querySelector('#result');
+    const check = document.querySelector('#check');
+    const copy = document.querySelector('#copy');
+    check.addEventListener('click', async () => {
+      let settings;
+      try { settings = JSON.parse(localStorage.getItem('glowstone_db_v1'))?.settings; }
+      catch { result.textContent = 'Could not read saved settings. Nothing was changed.'; return; }
+      if (!settings?.syncUrl || !settings?.syncKey) {
+        result.textContent = 'No saved sync connection in this browser. Open this link in the browser used to install Glowstone, not a private/incognito window. Do not re-enter your key here.';
+        return;
+      }
+      let endpoint;
+      try { endpoint = new URL(settings.syncUrl); }
+      catch { result.textContent = 'The saved Sync URL is not a valid URL. Nothing was changed.'; return; }
+      const match = endpoint.pathname.match(/^\/macros\/s\/([A-Za-z0-9_-]+)\/exec$/);
+      if (endpoint.origin !== 'https://script.google.com' || !match) {
+        result.textContent = 'The saved connection is not a standard Apps Script /exec URL. Nothing was sent or changed.';
+        return;
+      }
+      check.disabled = true;
+      copy.disabled = true;
+      const report = { checkVersion: 1, endpointId: match[1] };
+      result.textContent = 'Checking POST Insights…';
+      try {
+        report.post = await checkRequest(endpoint, settings.syncKey, 'POST');
+        result.textContent = JSON.stringify(report, null, 2) + '\nChecking legacy GET Insights…';
+        report.get = await checkRequest(endpoint, settings.syncKey, 'GET');
+        result.textContent = JSON.stringify(report, null, 2);
+        copy.disabled = false;
+      } finally { check.disabled = false; }
+    });
+    copy.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(result.textContent); copy.textContent = 'Copied'; }
+      catch { copy.textContent = 'Copy unavailable — screenshot the result'; }
+    });
+  </script>
+</body>
+</html>
