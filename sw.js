@@ -1,4 +1,4 @@
-const VERSION = 'gs-ops-v0.7.7';
+const VERSION = 'gs-ops-v0.7.8';
 const ASSETS = [
   './',
   './index.html',

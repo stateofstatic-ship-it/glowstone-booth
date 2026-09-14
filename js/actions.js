@@ -1092,6 +1092,50 @@ export async function syncNow(auto) {
 
 let insightsRequestId = 0;
 
+async function requestInsights(syncUrl, syncKey, isCurrent) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  const read = async (url, options) => {
+    const response = await fetch(url, {
+      ...options, cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer', signal: controller.signal
+    });
+    if (!response.ok) throw new Error(`server returned HTTP ${response.status}`);
+    let out;
+    try { out = await response.json(); }
+    catch (error) {
+      if (error.name === 'AbortError') throw error;
+      throw new Error('The Sync URL did not return JSON. Check the Apps Script /exec URL and deployment access in Settings.');
+    }
+    if (out?.ok !== true) throw new Error(out?.error === 'auth'
+      ? 'Sync key rejected. Check the key and Apps Script deployment in Settings.'
+      : out?.error || 'The server rejected the Insights request.');
+    return out;
+  };
+  try {
+    let out = await read(syncUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ token: syncKey, action: 'insights' })
+    });
+    if (isInsightsResult(out)) return out;
+    // Older deployments ignore the POST action and acknowledge an empty sync instead.
+    if (out.insightsVersion === undefined && ('days' in out || 'txns' in out)) {
+      if (!isCurrent()) return null;
+      let url;
+      try { url = new URL(syncUrl); }
+      catch { throw new Error('The saved Sync URL is not a valid URL. Check Settings.'); }
+      url.searchParams.set('action', 'insights');
+      url.searchParams.set('token', syncKey);
+      out = await read(url.toString(), { method: 'GET' });
+    }
+    if (!isInsightsResult(out)) throw new Error('The server did not return Insights data. The Apps Script deployment for your saved Sync URL needs an update.');
+    return out;
+  } catch (error) {
+    if (error.name === 'AbortError') throw new Error('request timed out');
+    throw error;
+  } finally { clearTimeout(timeout); }
+}
+
 export async function loadInsights() {
   const requestId = ++insightsRequestId;
   const { syncUrl, syncKey } = db.settings;
@@ -1105,8 +1149,7 @@ export async function loadInsights() {
   ui.insights = { loading: true };
   render();
   try {
-    const out = await postSync(syncUrl, { token: syncKey, action: 'insights' }, 30000);
-    if (!isInsightsResult(out)) throw new Error('The server did not return Insights data. Try again after the app update finishes.');
+    const out = await requestInsights(syncUrl, syncKey, () => requestId === insightsRequestId);
     if (requestId !== insightsRequestId) return;
     ui.insights = out;
     if (ui.modal === 'insights') render();

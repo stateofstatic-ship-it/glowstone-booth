@@ -25,7 +25,7 @@ export function isSafeDryRunResult(result) {
 
 export function isInsightsResult(result) {
   return result?.ok === true
-    && result.insightsVersion === 1
+    && (result.insightsVersion === undefined || result.insightsVersion === 1)
     && result.metrics !== null && typeof result.metrics === 'object' && !Array.isArray(result.metrics)
     && ['events', 'yoy', 'tax', 'dataQuality', 'recommendations'].every((key) => Array.isArray(result[key]));
 }
