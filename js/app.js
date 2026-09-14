@@ -6,7 +6,7 @@ import { giveawayHandlers, handleGiveawaySubmit, handleGiveawayChange, handleGiv
 import {
   logSale, startDayFor, padKey, updateCloseCalc, submitClose, updateDayEditCalc, submitDayEdit, submitEvent, submitSettings,
   applyTheme, handleZettleFile, applyZettleImport, handleBackupFile, deleteDayPrompt, openDayEdit,
-  syncNow, confirmSync, loadInsights, loadPlannerFeed, loadPriceMaterials, ensureXLSX, exportJson, exportSales, exportDays,
+  syncNow, confirmSync, retryPendingDaySync, loadInsights, loadPlannerFeed, loadPriceMaterials, ensureXLSX, exportJson, exportSales, exportDays,
   submitPlannerEvent, submitPlannerTask, addSuggestedPlannerEvent, togglePlannerTask,
   deletePlannerTaskPrompt, deletePlannerEventPrompt, addApplicationChecklist, exportPlannerCalendar
 } from './actions.js';
@@ -93,7 +93,7 @@ const handlers = {
   },
   'close-open': () => { ui.modal = 'close'; render(); },
   'settings-open': () => { ui.modal = 'settings'; render(); },
-  'modal-cancel': () => { ui.modal = null; render(); },
+  'modal-cancel': () => { ui.syncPreview = null; ui.modal = null; render(); },
   'export-json': exportJson,
   'export-sales': exportSales,
   'export-days': exportDays,
@@ -108,7 +108,7 @@ const handlers = {
 };
 
 document.addEventListener('click', (e) => {
-  if (e.target.classList?.contains('overlay')) { ui.modal = null; render(); return; }
+  if (e.target.classList?.contains('overlay')) { ui.syncPreview = null; ui.modal = null; render(); return; }
   const el = e.target.closest('[data-action]');
   if (el) handlers[el.dataset.action]?.(el.dataset, el);
 });
@@ -191,6 +191,11 @@ document.addEventListener('contextmenu', (e) => {
 applyTheme();
 render();
 initializeGiveaways();
+window.addEventListener('online', retryPendingDaySync);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') retryPendingDaySync();
+});
+retryPendingDaySync();
 
 window.__gs = { handleZettleFile, parseZettleWorkbook, ensureXLSX, syncNow, loadInsights, loadPlannerFeed, loadPriceMaterials, tagPrice };
 

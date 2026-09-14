@@ -38,6 +38,28 @@ const FEED_STATUS_MAP = {
   denied: 'declined'
 };
 
+const EVENT_NAME_ALIASES = {
+  asm: 'astoria sunday market',
+  'astoria cruise ship': 'astoria cruise ship market',
+  'portland seafood wine': 'portland seafood and wine',
+  'sportsman show': 'pnw sportsman show',
+  'newport seafood wine': 'newport seafood and wine',
+  'astoria s and w': 'astoria seafood and wine',
+  astoria: 'astoria sunday market',
+  bam: 'bam arts fair',
+  'bellevue arts fair': 'bam arts fair',
+  'bellevue festival of the arts': 'bam arts fair',
+  'lake o art festival': 'lake oswego festival of arts',
+  'lake oswego market': 'lake oswego saturday market',
+  'lake oswego': 'lake oswego saturday market',
+  'meeker days': 'puyallup meeker days',
+  'fremont fair': 'seattle fremont fair',
+  'tacoma 4th of july wa': 'tacoma 4th of july',
+  'issiquah salmon days': 'issaquah salmon days',
+  'hillsboro gift and food festival': 'hillsboro holiday food and gift',
+  'garlic festival': 'north plains garlic festival'
+};
+
 function validDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) return false;
   const date = new Date(`${value}T00:00:00.000Z`);
@@ -74,13 +96,7 @@ function normalizedEventName(value) {
     .trim()
     .replace(/\s+/g, ' ')
     .replace(/\s+20\d{2}$/, '');
-  if ([
-    'bam',
-    'bam arts fair',
-    'bellevue arts fair',
-    'bellevue festival of the arts'
-  ].includes(normalized)) return 'bam arts fair';
-  return normalized;
+  return EVENT_NAME_ALIASES[normalized] || normalized;
 }
 
 function eventFingerprint(name, startDate) {
@@ -148,6 +164,23 @@ function normalizeFeedIssue(value) {
     name: limitedText(value.name || value.eventName, 200),
     reason
   };
+}
+
+export function isRejectedSalesEvent(db, event, date) {
+  if (!event || !validDate(date)) return false;
+  const eventKeys = new Set([event.canonicalEvent, event.name]
+    .map(normalizedEventName)
+    .filter(Boolean));
+  if (!eventKeys.size) return false;
+  const values = Array.isArray(db?.plannerFeed?.events) ? db.plannerFeed.events : [];
+  return values.some((value, index) => {
+    const feedEvent = normalizeFeedEvent(value, index);
+    if (!feedEvent || feedEvent.status !== 'declined') return false;
+    if (date < feedEvent.eventStart || date > feedEvent.eventEnd) return false;
+    return [feedEvent.canonicalEvent, feedEvent.name]
+      .map(normalizedEventName)
+      .some((key) => eventKeys.has(key));
+  });
 }
 
 export function validatePlannerFeedResponse(value) {

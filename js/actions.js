@@ -15,6 +15,7 @@ import {
   buildIcs,
   calendarEntries,
   checklistTemplates,
+  isRejectedSalesEvent,
   scheduledPlannerEvents,
   validatePlannerFeedResponse
 } from './planner.js';
@@ -91,6 +92,7 @@ export function updateCloseCalc() {
 export function submitClose(form) {
   const day = activeDay();
   if (!day) return;
+  const snapshot = { ...day };
   const float = parseFloat(form.floatCash.value) || 0;
   const drawerRaw = form.drawerCash.value.trim();
   day.hours = parseFloat(form.hours.value) || 0;
@@ -100,8 +102,14 @@ export function submitClose(form) {
   day.cashActual = drawerRaw === '' ? cashLogged(day) : (parseFloat(drawerRaw) || 0) - float;
   day.notes = form.notes.value.trim();
   day.closedAt = Date.now();
+  day.synced = false;
   db.activeDayId = null;
-  persist();
+  if (!persist()) {
+    for (const key of Object.keys(day)) delete day[key];
+    Object.assign(day, snapshot);
+    db.activeDayId = day.id;
+    return;
+  }
   ui.modal = null;
   ui.forceHome = false;
   const perHr = day.hours ? ` · ${fmt(dayTotal(day) / day.hours)}/hr` : '';
@@ -830,13 +838,50 @@ export function openDayEdit(dayId) {
 /* ---------- sheet sync ---------- */
 
 let syncRequestInFlight = false;
+let syncRetryQueued = false;
+
+export function retryPendingDaySync() {
+  if (navigator.onLine === false || ui.syncPreview) return;
+  if (db.days.some((day) => day.closedAt && !day.synced && !day.mappingOnly)) return syncNow(true);
+}
+
+function finishSyncRequest() {
+  syncRequestInFlight = false;
+  if (syncRetryQueued) {
+    syncRetryQueued = false;
+    queueMicrotask(retryPendingDaySync);
+  }
+}
+
+function reportSyncError(prefix, err) {
+  ui.syncError = err.message;
+  showToast(prefix + err.message);
+  if (!ui.modal) render();
+}
 
 export function collectSyncBatch() {
   const { syncUrl, syncKey } = db.settings;
-  const days = db.days.filter((d) => d.closedAt && !d.synced && !d.mappingOnly);
-  const sales = db.sales.filter((s) => !s.synced);
-  const ztx = Object.values(db.zettle).filter((z) => !z.synced);
+  const pendingDays = db.days.filter((d) => d.closedAt && !d.synced && !d.mappingOnly);
+  const pendingSales = db.sales.filter((s) => !s.synced);
+  const pendingZtx = Object.values(db.zettle).filter((z) => !z.synced);
   const tombstones = (db.tombstones || []).filter((t) => !t.synced);
+  const rejectedDay = (day) => day && isRejectedSalesEvent(db, eventById(day.eventId), day.date);
+  const blockedDays = pendingDays.filter(rejectedDay);
+  const blockedSales = pendingSales.filter((sale) => rejectedDay(dayById(sale.dayId)));
+  const blockedZtx = pendingZtx.filter((txn) => rejectedDay(dayById(txn.dayId)));
+  const days = pendingDays.filter((day) => !blockedDays.includes(day));
+  const sales = pendingSales.filter((sale) => !blockedSales.includes(sale));
+  const ztx = pendingZtx.filter((txn) => !blockedZtx.includes(txn));
+  const blockedEvents = [...blockedDays, ...blockedSales.map((sale) => dayById(sale.dayId)), ...blockedZtx.map((txn) => dayById(txn.dayId))]
+    .map((item) => item && eventById(item.eventId)?.name)
+    .filter(Boolean);
+  const blocked = {
+    days: blockedDays,
+    sales: blockedSales,
+    ztx: blockedZtx,
+    eventNames: [...new Set(blockedEvents)],
+    total: blockedDays.length + blockedSales.length + blockedZtx.length
+  };
   const evName = (dayId) => { const d = dayById(dayId); return d ? eventById(d.eventId)?.name || '' : ''; };
   const payload = {
     token: syncKey,
@@ -860,6 +905,7 @@ export function collectSyncBatch() {
     sales,
     ztx,
     tombstones,
+    blocked,
     payload,
     signature: syncPayloadSignature({ ...payload, syncUrl })
   };
@@ -880,8 +926,13 @@ async function postSync(syncUrl, payload) {
       signal: controller.signal
     });
     if (!res.ok) throw new Error(`server returned HTTP ${res.status}`);
-    const out = await res.json();
-    if (!out.ok) throw new Error(out.error || 'sync rejected');
+    let out;
+    try { out = await res.json(); }
+    catch { throw new Error('the Sync URL did not return JSON. Check the Apps Script /exec URL and deployment access in Settings.'); }
+    if (out?.ok !== true) throw new Error(out?.error === 'auth'
+      ? 'Sync key rejected. Check the key and Apps Script deployment in Settings.'
+      : out?.error || 'sync rejected');
+    if (payload.dryRun === false && out.dryRun === true) throw new Error('server did not commit the changes');
     return out;
   } catch (err) {
     if (err.name === 'AbortError') throw new Error('request timed out');
@@ -899,10 +950,20 @@ function markBatchSynced(batch) {
 }
 
 function saveSyncResult(batch, out) {
+  const items = [...batch.days, ...batch.sales, ...batch.ztx, ...batch.tombstones];
+  const flags = items.map((item) => item.synced);
+  const previous = { lastSync: db.lastSync, review: db.syncReviewRequired };
   markBatchSynced(batch);
   const parts = syncResultParts(out);
+  if (batch.blocked.total) parts.push(`${batch.blocked.total} rejected-event record(s) held locally`);
+  db.syncReviewRequired = Object.values(db.zettle).some((item) => item && item.synced !== true);
   db.lastSync = { at: Date.now(), summary: parts.join(', ') };
-  return persist();
+  ui.syncError = '';
+  if (persist()) return true;
+  items.forEach((item, index) => { item.synced = flags[index]; });
+  db.lastSync = previous.lastSync;
+  db.syncReviewRequired = previous.review;
+  return false;
 }
 
 export async function previewSync() {
@@ -917,6 +978,10 @@ export async function previewSync() {
   }
   const batch = collectSyncBatch();
   if (batchIsEmpty(batch)) {
+    if (batch.blocked.total) {
+      showToast(`${batch.blocked.total} rejected-event record(s) remain on this device; nothing eligible to sync.`);
+      return;
+    }
     if (db.syncReviewRequired) {
       db.syncReviewRequired = false;
       persist();
@@ -938,9 +1003,9 @@ export async function previewSync() {
     ui.modal = 'syncPreview';
     render();
   } catch (err) {
-    showToast('Sync preview failed: ' + err.message);
+    reportSyncError('Sync preview failed: ', err);
   } finally {
-    syncRequestInFlight = false;
+    finishSyncRequest();
   }
 }
 
@@ -971,7 +1036,6 @@ export async function confirmSync() {
       render();
       return;
     }
-    db.syncReviewRequired = false;
     const saved = saveSyncResult(preview.batch, out);
     ui.syncPreview = null;
     ui.modal = 'settings';
@@ -980,15 +1044,16 @@ export async function confirmSync() {
       : 'Sheet sync succeeded, but local status was not saved. Export a backup before reloading.');
     render();
   } catch (err) {
-    showToast('Sync failed: ' + err.message);
+    reportSyncError('Sync failed: ', err);
   } finally {
-    syncRequestInFlight = false;
+    finishSyncRequest();
   }
 }
 
 export async function syncNow(auto) {
   if (!auto) return previewSync();
-  if (syncRequestInFlight) return;
+  if (syncRequestInFlight) { syncRetryQueued = true; return; }
+  if (ui.syncPreview || navigator.onLine === false) return;
   const { syncUrl, syncKey } = db.settings;
   if (!syncUrl || !syncKey) return;
   if (db.syncReviewRequired) {
@@ -996,24 +1061,28 @@ export async function syncNow(auto) {
     return;
   }
   const batch = collectSyncBatch();
-  if (batchIsEmpty(batch)) return;
+  if (batchIsEmpty(batch)) {
+    if (batch.blocked.total) showToast(`${batch.blocked.total} rejected-event record(s) remain on this device.`);
+    return;
+  }
   syncRequestInFlight = true;
+  showToast('Syncing end-of-day numbers to Google Sheets…');
   try {
     const out = await postSync(syncUrl, { ...batch.payload, dryRun: false });
     if (collectSyncBatch().signature !== batch.signature) {
       showToast('Sheet received the snapshot, but local data changed during sync. Review it in Settings.');
-      render();
+      if (!ui.modal) render();
       return;
     }
     const saved = saveSyncResult(batch, out);
     showToast(saved
       ? `Synced: ${db.lastSync.summary}`
       : 'Sheet sync succeeded, but local status was not saved. Export a backup before reloading.');
-    render();
+    if (!ui.modal) render();
   } catch (err) {
-    showToast('Sync failed: ' + err.message);
+    reportSyncError('Sync failed — saved on this device: ', err);
   } finally {
-    syncRequestInFlight = false;
+    finishSyncRequest();
   }
 }
 

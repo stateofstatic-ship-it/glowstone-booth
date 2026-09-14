@@ -26,6 +26,17 @@ export function render() {
   renderModal();
 }
 
+function pendingSyncMarkup() {
+  const count = db.days.filter((day) => day.closedAt && !day.synced && !day.mappingOnly).length;
+  if (!count) return '';
+  let message = 'Saved on this device. Upload retries when the app reopens or reconnects.';
+  if (!db.settings.syncUrl || !db.settings.syncKey) message = 'Add the Sync URL and key in Settings to upload these totals.';
+  else if (db.syncReviewRequired) message = 'Review and confirm the pending POS import in Settings to resume uploads.';
+  else if (navigator.onLine === false) message = 'Offline — keep this device’s data. Upload retries when you reconnect.';
+  else if (ui.syncError) message = ui.syncError;
+  return `<div class="banner" role="status"><strong>${count} closed day(s) not confirmed in Google Sheets.</strong> ${esc(message)} Rejected-event records stay on this device. <button class="btn small" data-action="settings-open">Sync settings</button></div>`;
+}
+
 function homeView() {
   const day = activeDay();
   const today = todayStr();
@@ -46,7 +57,7 @@ function homeView() {
       <button class="btn" data-action="price-open">Price Tool</button>
       <button class="btn" data-action="giveaways-open">Giveaways</button>
       <button class="btn" data-action="planner-open">Planner${plannerCount ? ` <span class="count-badge">${plannerCount}</span>` : ''}</button>
-    </div>`;
+    </div>${pendingSyncMarkup()}`;
 
   if (day) {
     const ev = eventById(day.eventId);
@@ -975,6 +986,7 @@ export function renderModal() {
         </div>
       </form>
       <h2>Data</h2>
+      ${pendingSyncMarkup()}
       ${db.syncReviewRequired ? '<p class="banner">A POS import is waiting for review. Automatic Sheet sync is paused until this batch is previewed and confirmed.</p>' : ''}
       <button class="btn primary" style="width:100%;margin-bottom:10px" data-action="sync-now">Review &amp; sync to Google Sheets</button>
       ${db.lastSync ? `<p class="sub" style="text-align:center;margin-top:0">Last sync: ${new Date(db.lastSync.at).toLocaleString()} — ${esc(db.lastSync.summary)}</p>` : ''}
@@ -1005,6 +1017,7 @@ export function renderModal() {
       <div class="card">
         ${parts.map((part) => `<div class="day-row"><span class="d">${esc(part)}</span></div>`).join('')}
       </div>
+      ${preview.batch.blocked.total ? `<p class="banner">${preview.batch.blocked.total} pending record${preview.batch.blocked.total === 1 ? '' : 's'} for ${esc(preview.batch.blocked.eventNames.join(', '))} stayed on this device because Events_Master marks the occurrence rejected.</p>` : ''}
       <p class="sub">Reviewed local batch: ${preview.batch.days.length} day(s), ${preview.batch.sales.length} app sale(s), ${preview.batch.ztx.length} POS receipt(s), and ${preview.batch.tombstones.length} deletion request(s).</p>
       <p class="sub">Google Sheets could change between preview and confirmation. The live sync rechecks your local batch and stops if it changed.</p>
       <div class="actions">

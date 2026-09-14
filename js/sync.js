@@ -31,6 +31,7 @@ export function syncResultParts(result) {
     `${result.txnsUpdated || 0} txn(s) updated`
   ];
   if (result.daysSkipped) parts.push(`${result.daysSkipped} day(s) skipped`);
+  if (result.warning) parts.push(result.warning);
   if (result.txnsSkipped) parts.push(`${result.txnsSkipped} txn(s) skipped`);
   if (result.deletesSkipped) parts.push(`${result.deletesSkipped} stale deletion(s) cancelled`);
   if (result.daysDeleted || result.txnsDeleted) {

@@ -12,6 +12,7 @@ export const ui = {
   toastTimer: null,
   zimport: null,
   syncPreview: null,
+  syncError: '',
   dayEditId: null,
   insights: null,
   price: null,
