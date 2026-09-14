@@ -546,7 +546,7 @@ function insightsMarkup() {
   if (!data || data.loading) {
     return `
       <h3>Insights</h3>
-      <div class="card"><strong>Loading sheet insights...</strong><p class="sub">Reading Dashboard, Event_Analysis, Historical_Sales, Daily_Sales, and Txn_Log.</p></div>`;
+      <div class="card"><strong>Loading sheet insights...</strong><p class="sub">Reading Dashboard, Event_Analysis, Historical_Sales, Daily_Sales, and Txn_Log.</p><p class="sub">If Google Sheets does not respond within 30 seconds, you can retry. Sales data stays unchanged.</p></div>`;
   }
   if (data.error) {
     return `
@@ -1001,7 +1001,7 @@ export function renderModal() {
       <button class="btn primary" style="width:100%" data-action="zettle-pick">Import Zettle report (.xlsx)</button>
       <input type="file" id="zettle-file" accept=".xlsx,.xls" hidden>
       <input type="file" id="backup-file" accept=".json,application/json" hidden>
-      <p class="sub" style="text-align:center">Glowstone Ops v0.7.6</p>`;
+      <p class="sub" style="text-align:center">Glowstone Ops v0.7.7</p>`;
   }
 
   if (ui.modal === 'insights') sheet = insightsMarkup();

@@ -23,6 +23,13 @@ export function isSafeDryRunResult(result) {
     && Number(result.dryRunVersion) >= 1;
 }
 
+export function isInsightsResult(result) {
+  return result?.ok === true
+    && result.insightsVersion === 1
+    && result.metrics !== null && typeof result.metrics === 'object' && !Array.isArray(result.metrics)
+    && ['events', 'yoy', 'tax', 'dataQuality', 'recommendations'].every((key) => Array.isArray(result[key]));
+}
+
 export function syncResultParts(result) {
   const parts = [
     `${result.days || 0} day(s) added`,
