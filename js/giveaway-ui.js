@@ -36,7 +36,7 @@ function patchDay(patch, id = giveawayDay()?.id) {
 }
 function notifyError(error) {
   giveawayUI.error = error.name === 'AbortError' ? 'The request timed out. Your saved entries are safe. Retry before drawing.' : error.message;
-  showToast(giveawayUI.error);
+  if (ui.view === 'giveaways') showToast(giveawayUI.error);
 }
 function dayPayload() {
   const day = giveawayDay();
@@ -130,10 +130,11 @@ export async function openGiveaways() {
   if (giveawayDay() && dayRecord().formUrl && !dayRecord().finishedAt && navigator.onLine !== false) refreshGiveaways();
 }
 export async function refreshGiveaways() {
-  if (refreshInFlight || giveawayUI.busy || giveawayUI.spinning || !giveawayDay()) return;
+  if (ui.view !== 'giveaways' || refreshInFlight || giveawayUI.busy || giveawayUI.spinning || !giveawayDay()) return;
   refreshInFlight = true;
   await guarded(async () => {
     await loadPrivate();
+    if (ui.view !== 'giveaways') return;
     const result = await request('refresh');
     await acceptSnapshot(result);
   });
